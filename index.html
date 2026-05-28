@@ -172,66 +172,77 @@ tr.s3 { background: rgba(210,153,34,.05); }
 
 <script>
 /* ═══════════════════════════════════════════════════════
-   股票清單（可自行新增或修改）
-   ex: 'TW' = 上市 TWSE，'TWO' = 上櫃 TPEX
+   動態從 TWSE / TPEX Open API 載入完整股票清單
 ═══════════════════════════════════════════════════════ */
-const STOCKS = [
-  // 晶圓代工
-  { code:'2330', name:'台積電',     ex:'TW',  sector:'晶圓代工' },
-  { code:'6770', name:'力積電',     ex:'TW',  sector:'晶圓代工' },
-  { code:'2303', name:'聯電',       ex:'TW',  sector:'晶圓代工' },
-  // 材料
-  { code:'6488', name:'環球晶',     ex:'TWO', sector:'矽晶圓'   },
-  { code:'3105', name:'穩懋',       ex:'TW',  sector:'化合物半導體' },
-  // IC 設計
-  { code:'2454', name:'聯發科',     ex:'TW',  sector:'IC設計'   },
-  { code:'3034', name:'聯詠',       ex:'TW',  sector:'IC設計'   },
-  { code:'2379', name:'瑞昱',       ex:'TW',  sector:'IC設計'   },
-  { code:'5274', name:'信驊',       ex:'TWO', sector:'IC設計'   },
-  { code:'4966', name:'譜瑞-KY',    ex:'TWO', sector:'IC設計'   },
-  { code:'3443', name:'創意',       ex:'TW',  sector:'IC設計'   },
-  { code:'3661', name:'世芯-KY',    ex:'TW',  sector:'IC設計'   },
-  { code:'5269', name:'祥碩',       ex:'TWO', sector:'IC設計'   },
-  { code:'3714', name:'富采',       ex:'TWO', sector:'IC設計'   },
-  { code:'2344', name:'華邦電',     ex:'TW',  sector:'記憶體'   },
-  { code:'2337', name:'旺宏',       ex:'TW',  sector:'記憶體'   },
-  // AI / 伺服器
-  { code:'6669', name:'緯穎',       ex:'TW',  sector:'AI伺服器' },
-  { code:'2382', name:'廣達',       ex:'TW',  sector:'AI伺服器' },
-  { code:'3231', name:'緯創',       ex:'TW',  sector:'伺服器'   },
-  { code:'2317', name:'鴻海',       ex:'TW',  sector:'EMS'      },
-  { code:'3533', name:'嘉澤',       ex:'TW',  sector:'連接器'   },
-  // 封測 / PCB
-  { code:'3711', name:'日月光投控', ex:'TW',  sector:'封測'     },
-  { code:'3037', name:'欣興',       ex:'TW',  sector:'PCB'      },
-  { code:'8046', name:'南電',       ex:'TWO', sector:'PCB'      },
-  { code:'6278', name:'台表科',     ex:'TW',  sector:'PCB'      },
-  // 科技硬體
-  { code:'3008', name:'大立光',     ex:'TW',  sector:'光學'     },
-  { code:'2357', name:'華碩',       ex:'TW',  sector:'電腦'     },
-  { code:'2376', name:'技嘉',       ex:'TW',  sector:'主機板'   },
-  { code:'2395', name:'研華',       ex:'TW',  sector:'工控'     },
-  { code:'2308', name:'台達電',     ex:'TW',  sector:'電源'     },
-  { code:'2360', name:'致茂',       ex:'TW',  sector:'量測'     },
-  { code:'2327', name:'國巨',       ex:'TW',  sector:'被動元件' },
-  // 航運
-  { code:'2603', name:'長榮',       ex:'TW',  sector:'貨運'     },
-  { code:'2618', name:'長榮航',     ex:'TW',  sector:'航空'     },
-  // 金融
-  { code:'2881', name:'富邦金',     ex:'TW',  sector:'金控'     },
-  { code:'2882', name:'國泰金',     ex:'TW',  sector:'金控'     },
-  { code:'2886', name:'兆豐金',     ex:'TW',  sector:'金控'     },
-  // 傳產 / 電信
-  { code:'1301', name:'台塑',       ex:'TW',  sector:'石化'     },
-  { code:'1303', name:'南亞',       ex:'TW',  sector:'石化'     },
-  { code:'2002', name:'中鋼',       ex:'TW',  sector:'鋼鐵'     },
-  { code:'6505', name:'台塑化',     ex:'TW',  sector:'石化'     },
-  { code:'2412', name:'中華電',     ex:'TW',  sector:'電信'     },
-  // 其他
-  { code:'6409', name:'旭隼',       ex:'TWO', sector:'網通'     },
-  { code:'4915', name:'致伸',       ex:'TWO', sector:'電子'     },
-  { code:'3036', name:'文曄',       ex:'TWO', sector:'通路'     },
-];
+let STOCKS = [];
+
+async function fetchStockList(onStatus) {
+  const sources = [
+    { url: 'https://openapi.twse.com.tw/v1/opendata/t187ap03_L', ex: 'TW',  label: '上市' },
+    { url: 'https://openapi.twse.com.tw/v1/opendata/t187ap03_T', ex: 'TWO', label: '上櫃' },
+  ];
+
+  const all = [];
+
+  for (const { url, ex, label } of sources) {
+    onStatus?.(`載入 ${label} 股票清單...`);
+    const proxies = [
+      url,
+      `https://corsproxy.io/?${encodeURIComponent(url)}`,
+      `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    ];
+
+    let loaded = false;
+    for (const pUrl of proxies) {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 12000);
+        const res = await fetch(pUrl, { signal: ctrl.signal });
+        clearTimeout(timer);
+        if (!res.ok) continue;
+
+        let data = await res.json();
+        if (data?.contents) data = JSON.parse(data.contents); // allorigins wrapper
+        if (!Array.isArray(data)) continue;
+
+        for (const item of data) {
+          const code   = (item['公司代號'] || item['SecuritiesCompanyCode'] || '').trim();
+          const name   = (item['公司簡稱'] || item['CompanyAbbreviation'] || code).trim();
+          const sector = (item['產業別']   || item['IndustryType'] || '—').trim();
+
+          // 只保留 4 位數字普通股（排除 ETF 如 0050/0056 開頭 "00"）
+          if (/^\d{4}$/.test(code) && !code.startsWith('00')) {
+            all.push({ code, name, ex, sector });
+          }
+        }
+        loaded = true;
+        break;
+      } catch (_) { /* try next proxy */ }
+    }
+
+    if (!loaded) {
+      console.warn(`無法載入 ${label} 股票清單，使用備用清單`);
+    }
+  }
+
+  // 備用清單（若 API 全部失敗）
+  if (all.length === 0) {
+    return [
+      { code:'2330', name:'台積電',     ex:'TW',  sector:'晶圓代工' },
+      { code:'2454', name:'聯發科',     ex:'TW',  sector:'IC設計'   },
+      { code:'2382', name:'廣達',       ex:'TW',  sector:'AI伺服器' },
+      { code:'2317', name:'鴻海',       ex:'TW',  sector:'EMS'      },
+      { code:'3711', name:'日月光投控', ex:'TW',  sector:'封測'     },
+      { code:'2308', name:'台達電',     ex:'TW',  sector:'電源'     },
+      { code:'2603', name:'長榮',       ex:'TW',  sector:'貨運'     },
+      { code:'2881', name:'富邦金',     ex:'TW',  sector:'金控'     },
+      { code:'2882', name:'國泰金',     ex:'TW',  sector:'金控'     },
+      { code:'2412', name:'中華電',     ex:'TW',  sector:'電信'     },
+    ];
+  }
+
+  return all;
+}
 
 /* ═══════════════════════════════════════════════════════
    數學工具
@@ -433,9 +444,17 @@ async function startScan() {
   document.getElementById('statText').textContent = '';
   document.getElementById('results').innerHTML = '';
 
-  const allResults = [];
+  // 載入完整股票清單
+  document.getElementById('progressLabel').textContent = '載入股票清單中...';
+  document.getElementById('progressFill').style.width = '0%';
+  STOCKS = await fetchStockList(msg => {
+    document.getElementById('progressLabel').textContent = msg;
+  });
+  document.getElementById('statText').textContent = `股票清單：${STOCKS.length} 支`;
 
-  const BATCH = 5;
+  const allResults = [];
+  const BATCH = 8;
+
   for (let i = 0; i < STOCKS.length; i += BATCH) {
     const batch   = STOCKS.slice(i, i + BATCH);
     const partial = await Promise.all(batch.map(scanOne));
@@ -444,11 +463,12 @@ async function startScan() {
     const done = allResults.length;
     const pct  = Math.round(done / STOCKS.length * 100);
     document.getElementById('progressFill').style.width  = pct + '%';
-    document.getElementById('progressLabel').textContent = `掃描中 ${done} / ${STOCKS.length}（${pct}%）`;
+    document.getElementById('progressLabel').textContent =
+      `掃描中 ${done} / ${STOCKS.length}（${pct}%）`;
 
     renderTable([...allResults].sort((a, b) => (b.score ?? -1) - (a.score ?? -1)));
 
-    if (i + BATCH < STOCKS.length) await sleep(700);
+    if (i + BATCH < STOCKS.length) await sleep(400);
   }
 
   document.getElementById('progressWrap').style.display = 'none';
@@ -456,7 +476,7 @@ async function startScan() {
   const valid = allResults.filter(r => !r.error);
   const hits  = valid.filter(r => r.score >= 3);
   document.getElementById('statText').textContent =
-    `共掃描 ${valid.length} 支 · 高分標的 ${hits.length} 支`;
+    `共掃描 ${valid.length} 支有效 / ${STOCKS.length} 支 · 高分標的 ${hits.length} 支`;
 
   const now = new Date();
   document.getElementById('updatedAt').textContent =
