@@ -126,10 +126,44 @@ tr.s3 { background: rgba(210,153,34,.05); }
 }
 .empty .icon { font-size: 44px; margin-bottom: 12px; }
 
+/* ── Info box ── */
+.info-box {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.info-box summary {
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  background: var(--bg2);
+  user-select: none;
+}
+.info-box summary:hover { color: var(--text); }
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  background: var(--bg);
+}
+.info-grid strong { color: var(--text); display: block; margin-bottom: 4px; }
+.info-grid code {
+  display: inline-block; margin-top: 4px;
+  background: var(--bg3); padding: 3px 7px;
+  border-radius: 4px; font-size: 11px; color: var(--blue);
+}
+
 /* ── Responsive ── */
 @media (max-width: 640px) {
   h1 { font-size: 18px; }
   td, th { padding: 7px 8px; font-size: 12px; }
+  .info-grid { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -163,10 +197,22 @@ tr.s3 { background: rgba(210,153,34,.05); }
 
 <div class="legend">
   <span><span class="badge b4">4/4</span> 突破買進</span>
-  <span><span class="badge b3">3/4</span> 接近就緒</span>
+  <span><span class="badge b3">3/4</span> 接近就緒（等突破）</span>
   <span><span class="badge b2">2/4</span> 觀察中</span>
-  <span style="margin-left:4px;color:var(--muted)">TT = Minervini 7 條件全過 · ★ = 今日突破訊號</span>
+  <span style="color:var(--muted)">★ = 今日突破訊號</span>
 </div>
+
+<details class="info-box">
+  <summary>▸ 條件說明（點開）</summary>
+  <div class="info-grid">
+    <div><strong>Stage 2（Weinstein）</strong><br>收盤價高於 30 週均線，且均線本身向上。代表股票正處於多頭趨勢初中段，不買盤整和下跌段的股票。</div>
+    <div><strong>TT 7/7（Minervini Trend Template）</strong><br>7 個條件全過：股價高於 EMA50/150/200、EMA50&gt;EMA150&gt;EMA200、EMA200 向上、距 52 週高點在 25% 內、高於 52 週低點 25% 以上。條件越多代表趨勢越強。</div>
+    <div><strong>VCP（Volatility Contraction Pattern，波動收縮型態）</strong><br>股價在靠近 52 週高點時，價格波動幅度（ATR）縮小 25% 以上、成交量萎縮 20% 以上。表示籌碼換手完成、浮額清洗乾淨，像彈簧被壓縮，準備爆發。</div>
+    <div><strong>突破（Breakout）★</strong><br>今日收盤突破近 20 根 K 棒最高點，且成交量為 50 日均量的 1.4 倍以上，突破幅度不超過 5%（避免追高）。這是實際進場訊號。</div>
+    <div><strong>建議停損價</strong><br>近 20 根 K 棒的最低點。買進後若收盤跌破此價位，代表型態失敗，應無條件出場。<br>括號內為（停損距離 ÷ 現價），用來計算部位大小：<br><code>進場金額 = 總資金 × 單筆風險 1~2% ÷ 風險%</code></div>
+    <div><strong>為何有「無歷史資料」？</strong><br>Yahoo Finance 對新上市（不足 1 年資料）、已下市、成交極度稀少的股票不回傳資料。這些股票本來也不符合流動性要求，掃描器自動略過。</div>
+  </div>
+</details>
 
 </div><!-- /container -->
 
@@ -377,7 +423,7 @@ async function startScan() {
   document.getElementById('statText').textContent = `股票清單：${STOCKS.length} 支`;
 
   const allResults = [];
-  const BATCH = 8;
+  const BATCH = 5;
 
   for (let i = 0; i < STOCKS.length; i += BATCH) {
     const batch   = STOCKS.slice(i, i + BATCH);
@@ -392,15 +438,17 @@ async function startScan() {
 
     renderTable([...allResults].sort((a, b) => (b.score ?? -1) - (a.score ?? -1)));
 
-    if (i + BATCH < STOCKS.length) await sleep(400);
+    if (i + BATCH < STOCKS.length) await sleep(700);
   }
 
   document.getElementById('progressWrap').style.display = 'none';
 
-  const valid = allResults.filter(r => !r.error);
-  const hits  = valid.filter(r => r.score >= 3);
+  const valid   = allResults.filter(r => !r.error);
+  const nodata  = allResults.filter(r => r.error === '資料不足').length;
+  const apierr  = allResults.filter(r => r.error && r.error !== '資料不足').length;
+  const hits    = valid.filter(r => r.score >= 3);
   document.getElementById('statText').textContent =
-    `共掃描 ${valid.length} 支有效 / ${STOCKS.length} 支 · 高分標的 ${hits.length} 支`;
+    `有效 ${valid.length} 支 · 高分 ${hits.length} 支 · 資料不足 ${nodata} 支 · API失敗 ${apierr} 支`;
 
   const now = new Date();
   document.getElementById('updatedAt').textContent =
@@ -424,23 +472,19 @@ function scoreBadge(s) {
 }
 
 function renderTable(results) {
-  const rows = results.map(r => {
-    if (r.error) {
-      return `<tr class="err-row">
-        <td><a class="code-link" href="${tvUrl(r)}" target="_blank">${r.code}</a></td>
-        <td>${r.name}</td>
-        <td>${r.sector}</td>
-        <td colspan="7" style="color:var(--muted)">— ${r.error}</td>
-      </tr>`;
-    }
+  const valid   = results.filter(r => !r.error);
+  const errCnt  = results.length - valid.length;
 
+  const rows = valid.map(r => {
     const sc  = r.score;
     const ttD = r.tt
       ? `<span class="ok">7/7</span>`
       : `<span style="color:var(--muted)">${r.ttScore}/7</span>`;
 
-    const rpStr = r.riskPct != null
-      ? `<span class="${r.riskPct <= 8 ? 'risk-ok' : r.riskPct <= 15 ? 'risk-warn' : 'risk-bad'}">${r.riskPct.toFixed(1)}%</span>`
+    const riskCls = r.riskPct <= 8 ? 'risk-ok' : r.riskPct <= 15 ? 'risk-warn' : 'risk-bad';
+    const slCell  = r.stopLoss != null
+      ? `<span class="mono" style="font-size:12px">NT$${r.stopLoss.toFixed(1)}</span><br>` +
+        `<span class="${riskCls}" style="font-size:11px">(${r.riskPct.toFixed(1)}% 風險)</span>`
       : '—';
 
     return `<tr class="${sc >= 4 ? 's4' : sc >= 3 ? 's3' : ''}">
@@ -453,9 +497,14 @@ function renderTable(results) {
       <td>${chk(r.vcp)}</td>
       <td>${star(r.brk)}</td>
       <td>${scoreBadge(sc)}</td>
-      <td>${rpStr}</td>
+      <td style="line-height:1.6">${slCell}</td>
     </tr>`;
   }).join('');
+
+  const errNote = errCnt > 0
+    ? `<div style="text-align:right;padding:8px 12px;font-size:11px;color:var(--muted)">` +
+      `另有 ${errCnt} 支無歷史資料（新上市 / 已下市 / 資料不足）略過不顯示</div>`
+    : '';
 
   document.getElementById('results').innerHTML = `
     <div class="table-wrap">
@@ -463,13 +512,18 @@ function renderTable(results) {
         <thead>
           <tr>
             <th>代號</th><th>名稱</th><th>類股</th>
-            <th>股價</th><th>Stage2</th><th>TT (7)</th>
-            <th>VCP</th><th>突破</th><th>分數</th><th>停損風險</th>
+            <th>股價</th>
+            <th title="收盤 > 30週SMA 且 SMA 向上">Stage2</th>
+            <th title="Minervini 7條件全過">TT (7)</th>
+            <th title="波動率收縮：ATR縮小25%＋量能縮20%，靠近52週高點">VCP</th>
+            <th title="突破20根整理高點且成交量放大1.4倍">突破</th>
+            <th>分數</th>
+            <th title="建議停損價（近20根最低點）及距現價風險%">建議停損</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
-    </div>`;
+    </div>${errNote}`;
 }
 </script>
 </body>
