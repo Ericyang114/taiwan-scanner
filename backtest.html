@@ -337,7 +337,9 @@ function calcConditions({ close, high, low, volume }) {
   const pivot=wMax(high,20,last-1), avgVol=get(vol50,last);
   const brk = !!(pivot&&avgVol&&c>pivot&&v>avgVol*1.2&&c<=pivot*1.05);
   const score=[stage2,tt,vcp,brk].filter(Boolean).length;
-  const sl=wMin(low,20,last), riskPct=sl?(c-sl)/c*100:null;
+  // 方案 A：停損 = 突破點 × 97%（跌破突破點即出場）
+  const sl       = pivot ? pivot * 0.97 : wMin(low,20,last);
+  const riskPct  = sl ? (c - sl) / c * 100 : null;
   return { price:c, stage2, tt, ttScore, vcp, brk, pivot, score, riskPct, stopLoss:sl };
 }
 
