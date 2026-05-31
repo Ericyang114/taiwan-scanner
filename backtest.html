@@ -108,6 +108,7 @@ tr.hold { background: rgba(88,166,255,.04); }
 .tag-win  { background: rgba(63,185,80,.2);  color: var(--green);  }
 .tag-loss { background: rgba(248,81,73,.15); color: var(--red);    }
 .tag-hold { background: rgba(88,166,255,.15);color: var(--blue);   }
+.tag-time { background: rgba(210,153,34,.2); color: var(--yellow); }
 
 .mono { font-family: monospace; }
 .code-link { color: var(--blue); text-decoration: none; font-weight: 700; }
@@ -201,7 +202,7 @@ tr.hold { background: rgba(88,166,255,.04); }
     <div><strong>進場條件（A方案）</strong>過去30天內，量能突破必須觸發，且 Stage2 / TT / VCP 三項中至少兩項成立（score ≥ 3），以當日收盤價進場。</div>
     <div><strong>停損</strong>進場當日計算之近20根K棒最低點。之後每日掃：當日最低 ≤ 停損 → 停損出場。</div>
     <div><strong>目標（2R）</strong>進場價 + 2×（進場 - 停損）。當日最高 ≥ 目標 → 達標出場。勝率若 > 33% 則期望值為正。</div>
-    <div><strong>持有中</strong>尚未碰到停損或目標 → 以最新收盤計算浮動損益。</div>
+    <div><strong>時間出場 (15日)</strong>進場後15個交易日內未碰停損也未達標 → 第15日收盤強制出場。「持有中」只代表訊號發生在最近15天內、時間還沒到。</div>
     <div><strong>R值</strong>損益 ÷ 單筆風險。+2R = 賺了2倍風險、-1R = 虧了1個風險單位。</div>
     <div><strong>注意</strong>回測不含滑價、手續費（約0.3%/來回），實際損益會略低。同一支股票可能多次進場。</div>
   </div>
@@ -403,12 +404,21 @@ function backtestStock(stock, data) {
     const risk       = entryPrice - stopLoss;
     const takeProfit = entryPrice + 2 * risk;
 
-    // 向前掃描：找到停損或目標
+    // 向前掃描：找到停損 / 目標 / 15日時間出場
+    const MAX_HOLD = 15; // 最多持有幾個交易日
     let exitPrice  = close[n - 1] ?? entryPrice;
     let exitTs     = timestamps[n - 1];
     let exitReason = '持有中';
 
     for (let j = i + 1; j < n; j++) {
+      // 超過 MAX_HOLD 個交易日 → 時間出場
+      if (j - i > MAX_HOLD) {
+        const idx    = j - 1; // 第 MAX_HOLD 天收盤
+        exitPrice    = close[idx] ?? entryPrice;
+        exitTs       = timestamps[idx];
+        exitReason   = `時間出場 (${MAX_HOLD}日)`;
+        break;
+      }
       if (low[j] !== null && low[j] <= stopLoss) {
         exitPrice  = stopLoss;
         exitTs     = timestamps[j];
@@ -532,6 +542,7 @@ function renderSummary(signals) {
   const completed = signals.filter(s => s.exitReason !== '持有中');
   const wins      = signals.filter(s => s.exitReason === '達標 (2R)');
   const losses    = signals.filter(s => s.exitReason === '停損出場');
+  const timeExit  = signals.filter(s => s.exitReason.startsWith('時間出場'));
   const holding   = signals.filter(s => s.exitReason === '持有中');
 
   const wr   = completed.length ? (wins.length / completed.length * 100).toFixed(0) : '—';
@@ -559,7 +570,7 @@ function renderSummary(signals) {
     <div class="sum-card">
       <div class="sum-label">觸發訊號</div>
       <div class="sum-value col-blue">${signals.length} 筆</div>
-      <div class="sum-sub">完成 ${completed.length} · 持有中 ${holding.length}</div>
+      <div class="sum-sub">達標 ${wins.length} · 停損 ${losses.length} · 時間出場 ${timeExit.length} · 持有中 ${holding.length}</div>
     </div>
     <div class="sum-card">
       <div class="sum-label">勝率</div>
@@ -666,8 +677,9 @@ function renderTradeTable(signals, filter) {
   const rows = signals.map(s => {
     const isWin  = s.exitReason === '達標 (2R)';
     const isLoss = s.exitReason === '停損出場';
+    const isTime = s.exitReason.startsWith('時間出場');
     const rowCls = isWin ? 'win' : isLoss ? 'loss' : 'hold';
-    const tagCls = isWin ? 'tag-win' : isLoss ? 'tag-loss' : 'tag-hold';
+    const tagCls = isWin ? 'tag-win' : isLoss ? 'tag-loss' : isTime ? 'tag-time' : 'tag-hold';
     const pnlStr  = s.pnlPct >= 0 ? `+${s.pnlPct.toFixed(1)}%` : `${s.pnlPct.toFixed(1)}%`;
     const pnlCol  = s.pnlPct >= 0 ? 'col-green' : 'col-red';
     const rStr    = s.rMult >= 0 ? `+${s.rMult.toFixed(2)}R` : `${s.rMult.toFixed(2)}R`;
