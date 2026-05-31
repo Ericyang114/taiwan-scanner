@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>60天回測報告 | 台股動能策略</title>
+<title>一年回測報告 | 台股動能策略</title>
 <style>
 :root {
   --bg:     #0d1117;
@@ -150,7 +150,7 @@ tr.hold { background: rgba(88,166,255,.04); }
 </div>
 
 <header>
-  <h1>60天回測報告</h1>
+  <h1>一年回測報告</h1>
   <p class="subtitle">精選40支熱門股 · Minervini + Weinstein 動能策略 · 每次進場1張（1000股）</p>
   <p class="rules-line">
     進場：<span>量能突破 ✓（量 ≥ 1.2x 均量）+ score ≥ 3</span>
@@ -385,7 +385,7 @@ function backtestStock(stock, data) {
   const n = close.length;
   if (n < 260) return [];
 
-  const cutoff = Date.now() / 1000 - 60 * 86400; // 60天前
+  const cutoff = Date.now() / 1000 - 365 * 86400; // 一年前
   const signals = [];
 
   for (let i = 252; i < n - 1; i++) {
