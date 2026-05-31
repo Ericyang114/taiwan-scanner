@@ -41,6 +41,18 @@ h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
 }
 #runBtn:hover { opacity: .85; }
 #runBtn:disabled { opacity: .45; cursor: not-allowed; }
+.capital-wrap {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 12px;
+}
+.capital-wrap label { color: var(--muted); font-size: 13px; }
+.capital-wrap input {
+  background: transparent; border: none; outline: none;
+  color: var(--text); font-size: 14px; font-weight: 700;
+  width: 70px; text-align: right;
+}
+.capital-wrap span { color: var(--muted); font-size: 13px; }
 .meta { color: var(--muted); font-size: 12px; }
 
 /* ── Progress ── */
@@ -50,7 +62,8 @@ h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
 .progress-label { color: var(--muted); font-size: 12px; }
 
 /* ── Summary Cards ── */
-.summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.summary-grid .divider { grid-column: 1 / -1; border-top: 1px solid var(--border); margin: 2px 0; }
 .sum-card {
   background: var(--bg2); border: 1px solid var(--border);
   border-radius: 8px; padding: 14px 16px;
@@ -146,6 +159,11 @@ tr.hold { background: rgba(88,166,255,.04); }
   </p>
   <div class="controls">
     <button id="runBtn" onclick="runBacktest()">▶ 開始回測</button>
+    <div class="capital-wrap">
+      <label for="perTrade">每筆投入</label>
+      <input id="perTrade" type="number" value="10" min="1" max="9999" onchange="rerenderSummary()">
+      <span>萬元</span>
+    </div>
     <span class="meta" id="statText"></span>
     <span class="meta" id="updatedAt"></span>
   </div>
@@ -459,27 +477,51 @@ function fmtDate(ts) {
 function fmtPrice(p) { return p != null ? p.toFixed(1) : '—'; }
 function tvUrl(s) { return `https://www.tradingview.com/chart/?symbol=${s.ex==='TWO'?'TPEX':'TWSE'}:${s.code}`; }
 
+function getPerTrade() {
+  return (parseFloat(document.getElementById('perTrade').value) || 10) * 10000;
+}
+function fmtMoney(n) {
+  if (Math.abs(n) >= 1e8) return (n/1e8).toFixed(2) + '億';
+  if (Math.abs(n) >= 1e4) return (n/1e4).toFixed(1) + '萬';
+  return n.toFixed(0);
+}
+
+function rerenderSummary() {
+  if (allSignals.length > 0) renderSummary(allSignals);
+}
+
 function renderSummary(signals) {
   const completed = signals.filter(s => s.exitReason !== '持有中');
   const wins      = signals.filter(s => s.exitReason === '達標 (2R)');
   const losses    = signals.filter(s => s.exitReason === '停損出場');
   const holding   = signals.filter(s => s.exitReason === '持有中');
 
-  const wr  = completed.length ? (wins.length / completed.length * 100).toFixed(0) : '—';
+  const wr   = completed.length ? (wins.length / completed.length * 100).toFixed(0) : '—';
   const avgW = wins.length   ? (wins.reduce((a,s)=>a+s.pnlPct,0)/wins.length).toFixed(1)   : '—';
   const avgL = losses.length ? (losses.reduce((a,s)=>a+s.pnlPct,0)/losses.length).toFixed(1) : '—';
 
-  // EV in R: wr * 2R - (1-wr) * 1R
   let evR = '—';
   if (completed.length) {
     const wrNum = wins.length / completed.length;
     evR = (wrNum * 2 - (1 - wrNum) * 1).toFixed(2);
   }
 
+  // 金額計算
+  const pt = getPerTrade();
+  const totalTxn   = signals.length * pt;                                         // 總交易金額
+  const holdingVal = holding.reduce((a,s) => a + pt * (1 + s.pnlPct/100), 0);    // 庫存市值
+  const holdingCost= holding.length * pt;                                          // 庫存成本
+  const realizedPnl= completed.reduce((a,s) => a + pt * s.pnlPct/100, 0);        // 已實現損益
+  const unrealPnl  = holdingVal - holdingCost;                                    // 未實現損益
+  const totalPnl   = realizedPnl + unrealPnl;                                     // 總損益
+
+  const pnlCls = n => n >= 0 ? 'col-green' : 'col-red';
+  const pnlStr = n => (n >= 0 ? '+' : '') + fmtMoney(n);
+
   document.getElementById('summaryCards').innerHTML = `
     <div class="sum-card">
       <div class="sum-label">觸發訊號</div>
-      <div class="sum-value col-blue">${signals.length}</div>
+      <div class="sum-value col-blue">${signals.length} 筆</div>
       <div class="sum-sub">完成 ${completed.length} · 持有中 ${holding.length}</div>
     </div>
     <div class="sum-card">
@@ -500,7 +542,33 @@ function renderSummary(signals) {
     <div class="sum-card">
       <div class="sum-label">期望值</div>
       <div class="sum-value ${parseFloat(evR)>0?'col-green':'col-red'}">${evR !== '—' ? evR+'R' : '—'}</div>
-      <div class="sum-sub">每筆平均賺 X 個風險單位</div>
+      <div class="sum-sub">每筆平均 X 個風險單位</div>
+    </div>
+    <div class="divider"></div>
+    <div class="sum-card">
+      <div class="sum-label">總交易金額</div>
+      <div class="sum-value col-blue">${fmtMoney(totalTxn)}</div>
+      <div class="sum-sub">${signals.length} 筆 × ${fmtMoney(pt)}</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-label">現有庫存市值</div>
+      <div class="sum-value col-blue">${holding.length ? fmtMoney(holdingVal) : '—'}</div>
+      <div class="sum-sub">成本 ${holding.length ? fmtMoney(holdingCost) : '—'} · ${holding.length} 支持有中</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-label">已實現損益</div>
+      <div class="sum-value ${pnlCls(realizedPnl)}">${completed.length ? pnlStr(realizedPnl) : '—'}</div>
+      <div class="sum-sub">${completed.length} 筆已出場</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-label">未實現損益</div>
+      <div class="sum-value ${pnlCls(unrealPnl)}">${holding.length ? pnlStr(unrealPnl) : '—'}</div>
+      <div class="sum-sub">庫存浮動損益</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-label">總損益（含浮盈）</div>
+      <div class="sum-value ${pnlCls(totalPnl)}">${signals.length ? pnlStr(totalPnl) : '—'}</div>
+      <div class="sum-sub">已實現 + 未實現</div>
     </div>`;
 }
 
