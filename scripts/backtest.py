@@ -12,7 +12,7 @@
 - 回測窗口：最近 365 天
 """
 
-import os, sys, io, re, json, time, requests, numpy as np
+import os, sys, io, re, json, time, random, requests, numpy as np
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
@@ -32,7 +32,7 @@ SECTOR_MAP = {
     '36':'生技',   '37':'文創',   '38':'農業科技','91':'DR憑證',
 }
 
-MAX_WORKERS = 8
+MAX_WORKERS = 3   # GitHub Actions 限速嚴，不能太多並行
 BACKTEST_DAYS = 365
 MAX_HOLD = 15
 print_lock = threading.Lock()
@@ -142,20 +142,33 @@ def calc_conditions(close, high, low, volume):
             'risk_pct':risk_pct,'stop_loss':sl}
 
 # ── 資料抓取 ─────────────────────────────────────────
-def fetch_ohlcv(stock, retries=2):
+_UA_LIST = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36',
+]
+
+def fetch_ohlcv(stock, retries=3):
     suffix='.TWO' if stock['ex']=='TWO' else '.TW'
     url=f"https://query1.finance.yahoo.com/v8/finance/chart/{stock['code']}{suffix}?interval=1d&range=2y"
     for attempt in range(retries):
         try:
-            r=requests.get(url,headers={'User-Agent':'Mozilla/5.0'},timeout=12)
-            if r.status_code!=200: time.sleep(1); continue
+            ua = random.choice(_UA_LIST)
+            r=requests.get(url, headers={'User-Agent': ua}, timeout=10)
+            if r.status_code == 429:          # 被限速
+                wait = 5 + attempt * 5
+                time.sleep(wait); continue
+            if r.status_code != 200:
+                time.sleep(2); continue
             result=r.json()['chart']['result'][0]
             q=result['indicators']['quote'][0]
             ts=result['timestamp']
             fix=lambda a:[v if v is not None and not np.isnan(v) else None for v in (a or [])]
+            # 隨機延遲避免連續請求被擋
+            time.sleep(random.uniform(0.3, 0.8))
             return {'timestamps':ts,'close':fix(q.get('close',[])),'high':fix(q.get('high',[])),'low':fix(q.get('low',[])),'volume':fix(q.get('volume',[]))}
-        except Exception as e:
-            if attempt<retries-1: time.sleep(2)
+        except Exception:
+            if attempt < retries-1: time.sleep(3 + attempt * 2)
     return None
 
 # ── 回測單支股票 ─────────────────────────────────────
