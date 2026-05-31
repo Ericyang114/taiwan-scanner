@@ -263,6 +263,14 @@ def send_long_message(text):
         send_telegram(chunk)
 
 # ── 訊息格式化 ────────────────────────────────────────
+def tv_url(stock):
+    market = "TPEX" if stock.get("ex") == "TWO" else "TWSE"
+    return f"https://www.tradingview.com/chart/?symbol={market}:{stock['code']}"
+
+def tv_link(stock):
+    """回傳可點擊的 Telegram HTML 連結"""
+    return f'<a href="{tv_url(stock)}">{stock["code"]} {stock["name"]}</a>'
+
 def fmt_price(p):
     return f"{p:,.1f}" if p else "—"
 
@@ -290,7 +298,7 @@ def build_message(entries, watches, total, errors, scan_time, date_str):
             cond_tags = " ".join(
                 t for t, ok in [("Stage2",c["stage2"]),("TT",c["tt"]),("VCP",c["vcp"])] if ok
             )
-            lines.append(f"\n▶ <b>{s['code']} {s['name']}</b>（{s['sector']}）")
+            lines.append(f"\n▶ <b>{tv_link(s)}</b>（{s['sector']}）")
             lines.append(f"   進場 NT${fmt_price(p)} ｜ 停損 NT${fmt_price(sl)} ｜ 目標 NT${fmt_price(tgt)}")
             if risk:
                 lines.append(f"   風險 {risk:.1f}% ｜ 成本/張 {fmt_money(p * SHARES)}")
@@ -311,7 +319,7 @@ def build_message(entries, watches, total, errors, scan_time, date_str):
             miss = [t for t, ok in [("Stage2",c["stage2"]),("TT",c["tt"]),("VCP",c["vcp"])] if not ok]
             miss_str = "、".join(miss) if miss else "突破"
             lines.append(
-                f"▷ <b>{s['code']} {s['name']}</b>（{s['sector']}）"
+                f"▷ <b>{tv_link(s)}</b>（{s['sector']}）"
                 f"  缺{miss_str}  突破點 NT${fmt_price(c['pivot'])}"
             )
         if extra:
