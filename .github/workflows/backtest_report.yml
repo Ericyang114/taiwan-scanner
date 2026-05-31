@@ -1,0 +1,35 @@
+name: 一年回測報告（Python 直連版）
+
+on:
+  workflow_dispatch:   # 手動觸發
+  schedule:
+    # 每週日台灣時間 14:00（UTC 06:00）自動跑一次
+    - cron: '0 6 * * 0'
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: 取得程式碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安裝套件
+        run: pip install requests numpy
+
+      - name: 執行 Python 回測
+        run: python scripts/backtest.py
+
+      - name: 推送 HTML 報告到 GitHub Pages
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add backtest_result.html
+          git diff --staged --quiet || git commit -m "Update backtest_result.html [skip ci]"
+          git push
