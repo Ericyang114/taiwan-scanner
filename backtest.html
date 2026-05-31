@@ -139,7 +139,7 @@ tr.hold { background: rgba(88,166,255,.04); }
   <h1>30天回測報告</h1>
   <p class="subtitle">熱門類股（半導體 / 電子 / 光電 / 生技 / 電機）· Minervini + Weinstein 動能策略</p>
   <p class="rules-line">
-    進場：<span>4/4 突破訊號當日收盤</span>
+    進場：<span>Stage2 ✓ + TT 7/7 ✓ + 量能突破 ✓（不要求 VCP）</span>
     停損：<span>近20根K棒最低點</span>
     目標：<span>進場價 + 2倍風險（2R）</span>
     忽略：<span>滑價 / 手續費</span>
@@ -180,7 +180,7 @@ tr.hold { background: rgba(88,166,255,.04); }
 <details class="info-box" style="margin-top:16px">
   <summary>▸ 回測規則說明（點開）</summary>
   <div class="info-grid">
-    <div><strong>進場條件</strong>過去30天內，某日收盤同時符合 4 個條件：Stage2 ✓、TT 7/7 ✓、VCP ✓、量能突破 ✓，以當日收盤價進場。</div>
+    <div><strong>進場條件</strong>過去30天內，某日收盤同時符合 3 個條件：Stage2 ✓、TT 7/7 ✓、量能突破 ✓（VCP 不做要求），以當日收盤價進場。</div>
     <div><strong>停損</strong>進場當日計算之近20根K棒最低點。之後每日掃：當日最低 ≤ 停損 → 停損出場。</div>
     <div><strong>目標（2R）</strong>進場價 + 2×（進場 - 停損）。當日最高 ≥ 目標 → 達標出場。勝率若 > 33% 則期望值為正。</div>
     <div><strong>持有中</strong>尚未碰到停損或目標 → 以最新收盤計算浮動損益。</div>
@@ -333,7 +333,8 @@ function backtestStock(stock, data) {
     };
 
     const cond = calcConditions(slice);
-    if (!cond || cond.score < 4 || !cond.brk) continue;
+    // 方向 B：Stage2 + TT 7/7 + 突破（移除 VCP 要求）
+    if (!cond || !cond.stage2 || !cond.tt || !cond.brk) continue;
 
     const entryPrice = close[i];
     const stopLoss   = cond.stopLoss;
