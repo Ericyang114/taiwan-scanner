@@ -1,80 +1,86 @@
 """
 台股動能掃描器 - Python 版
-每天 13:30 收盤後由 GitHub Actions 執行
-掃描 A方案：突破必須 + score >= 3（Stage2/TT/VCP 至少兩項）
+每天 13:35 收盤後由 GitHub Actions 執行
+自動從 TWSE/TPEX 官方 API 抓取全部上市上櫃普通股（約 1083 支）
+A方案：突破必須 + score >= 3
 結果推播到 Telegram
 """
 
-import os
-import sys
-import io
-import time
-import requests
-import numpy as np
+import os, sys, io, time, re, json, requests, numpy as np
 from datetime import datetime, timezone, timedelta
-
-# Windows 終端機 UTF-8 輸出
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 # ── 設定 ──────────────────────────────────────────────
 TELEGRAM_TOKEN   = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
-CAPITAL          = 100   # 萬元，用於計算建議部位
-SHARES           = 1000  # 一張 = 1000 股
-MAX_PRICE        = 9999  # 股價上限（不設限）
+CAPITAL          = 100    # 萬元（建議部位計算用）
+SHARES           = 1000   # 一張 = 1000 股
+MAX_WORKERS      = 8      # 並行執行緒數
+WATCH_LIMIT      = 20     # 觀察名單最多顯示幾支
+TG_MAX_LEN       = 4000   # Telegram 單則訊息字元上限
 
-# 精選 41 支熱門股
-STOCKS = [
-    # 半導體 / IC 設計
-    {"code": "2330", "name": "台積電",     "ex": "TW",  "sector": "半導體業"},
-    {"code": "2303", "name": "聯電",       "ex": "TW",  "sector": "半導體業"},
-    {"code": "6488", "name": "環球晶",     "ex": "TWO", "sector": "半導體業"},
-    {"code": "3105", "name": "穩懋",       "ex": "TW",  "sector": "半導體業"},
-    {"code": "2454", "name": "聯發科",     "ex": "TW",  "sector": "IC設計"},
-    {"code": "3034", "name": "聯詠",       "ex": "TW",  "sector": "IC設計"},
-    {"code": "2379", "name": "瑞昱",       "ex": "TW",  "sector": "IC設計"},
-    {"code": "3443", "name": "創意",       "ex": "TW",  "sector": "IC設計"},
-    {"code": "3661", "name": "世芯-KY",    "ex": "TW",  "sector": "IC設計"},
-    {"code": "5274", "name": "信驊",       "ex": "TWO", "sector": "IC設計"},
-    {"code": "5269", "name": "祥碩",       "ex": "TWO", "sector": "IC設計"},
-    {"code": "4966", "name": "譜瑞-KY",    "ex": "TWO", "sector": "IC設計"},
-    {"code": "2344", "name": "華邦電",     "ex": "TW",  "sector": "記憶體"},
-    # AI / 伺服器
-    {"code": "6669", "name": "緯穎",       "ex": "TW",  "sector": "AI伺服器"},
-    {"code": "2382", "name": "廣達",       "ex": "TW",  "sector": "AI伺服器"},
-    {"code": "3231", "name": "緯創",       "ex": "TW",  "sector": "伺服器"},
-    {"code": "2317", "name": "鴻海",       "ex": "TW",  "sector": "EMS"},
-    {"code": "2308", "name": "台達電",     "ex": "TW",  "sector": "電源"},
-    {"code": "3533", "name": "嘉澤",       "ex": "TW",  "sector": "連接器"},
-    # 封測 / PCB / 被動元件
-    {"code": "3711", "name": "日月光投控", "ex": "TW",  "sector": "封測"},
-    {"code": "3037", "name": "欣興",       "ex": "TW",  "sector": "PCB"},
-    {"code": "8046", "name": "南電",       "ex": "TWO", "sector": "PCB"},
-    {"code": "6278", "name": "台表科",     "ex": "TW",  "sector": "PCB"},
-    {"code": "2327", "name": "國巨",       "ex": "TW",  "sector": "被動元件"},
-    # 科技硬體
-    {"code": "3008", "name": "大立光",     "ex": "TW",  "sector": "光學"},
-    {"code": "2357", "name": "華碩",       "ex": "TW",  "sector": "電腦"},
-    {"code": "2376", "name": "技嘉",       "ex": "TW",  "sector": "主機板"},
-    {"code": "2395", "name": "研華",       "ex": "TW",  "sector": "工控"},
-    {"code": "2360", "name": "致茂",       "ex": "TW",  "sector": "量測"},
-    {"code": "3714", "name": "富采",       "ex": "TWO", "sector": "光電"},
-    # 航運
-    {"code": "2603", "name": "長榮",       "ex": "TW",  "sector": "航運"},
-    {"code": "2618", "name": "長榮航",     "ex": "TW",  "sector": "航空"},
-    # 金融
-    {"code": "2881", "name": "富邦金",     "ex": "TW",  "sector": "金控"},
-    {"code": "2882", "name": "國泰金",     "ex": "TW",  "sector": "金控"},
-    {"code": "2886", "name": "兆豐金",     "ex": "TW",  "sector": "金控"},
-    # 傳產 / 電信
-    {"code": "1301", "name": "台塑",       "ex": "TW",  "sector": "石化"},
-    {"code": "2002", "name": "中鋼",       "ex": "TW",  "sector": "鋼鐵"},
-    {"code": "2412", "name": "中華電",     "ex": "TW",  "sector": "電信"},
-    {"code": "6505", "name": "台塑化",     "ex": "TW",  "sector": "石化"},
-    {"code": "6409", "name": "旭隼",       "ex": "TWO", "sector": "網通"},
-    {"code": "2337", "name": "旺宏",       "ex": "TW",  "sector": "記憶體"},
-]
+SECTOR_MAP = {
+    '01':'水泥工業','02':'食品工業','03':'塑膠工業','04':'紡織纖維',
+    '05':'電機機械','06':'電器電纜','08':'化學工業','09':'生技醫療',
+    '10':'玻璃陶瓷','11':'造紙工業','12':'鋼鐵工業','13':'橡膠工業',
+    '14':'汽車工業','15':'電子工業','16':'航運業', '17':'觀光餐旅',
+    '18':'金融保險','19':'貿易百貨','20':'其他',   '21':'油電燃氣',
+    '22':'存託憑證','24':'半導體業','25':'電腦週邊','26':'光電業',
+    '27':'通信網路','28':'電子零組件','29':'電子通路','30':'資訊服務',
+    '31':'其他電子','32':'建材營造','33':'運動休閒','35':'居家生活',
+    '36':'生技',   '37':'文創',   '38':'農業科技','91':'DR憑證',
+}
+
+print_lock = threading.Lock()
+
+def safe_print(*args, **kwargs):
+    with print_lock:
+        print(*args, **kwargs)
+
+# ── 從 TWSE/TPEX 取得完整股票清單 ──────────────────────
+def fetch_stock_list():
+    sources = [
+        ("https://openapi.twse.com.tw/v1/opendata/t187ap03_L", "TW"),
+        ("https://openapi.twse.com.tw/v1/opendata/t187ap03_T", "TWO"),
+    ]
+    stocks = []
+
+    def fix_mojibake(s):
+        """修正 PowerShell/requests 可能的 latin-1 錯誤解碼"""
+        try:
+            return s.encode('latin-1').decode('utf-8')
+        except Exception:
+            return s
+
+    for url, ex in sources:
+        try:
+            r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+            r.raise_for_status()
+            data = json.loads(r.content.decode('utf-8'))
+            for item in data:
+                # 用欄位名稱取值（TWSE API 回傳標準 UTF-8 JSON）
+                code   = item.get('公司代號', '').strip()
+                name   = item.get('公司簡稱', code).strip()
+                sec_id = item.get('產業別', '').strip()
+                sector = SECTOR_MAP.get(sec_id, sec_id or '—')
+                # 只保留 4 位數字普通股，排除 ETF（開頭 00）
+                if re.match(r'^\d{4}$', code) and not code.startswith('00'):
+                    stocks.append({"code": code, "name": name, "ex": ex, "sector": sector})
+        except Exception as e:
+            safe_print(f"[警告] 無法取得 {ex} 清單：{e}")
+
+    if not stocks:
+        safe_print("[警告] TWSE API 失敗，使用備用清單")
+        # 最小備用清單
+        stocks = [
+            {"code":"2330","name":"台積電","ex":"TW","sector":"半導體業"},
+            {"code":"2454","name":"聯發科","ex":"TW","sector":"IC設計"},
+            {"code":"2317","name":"鴻海",  "ex":"TW","sector":"EMS"},
+            {"code":"2882","name":"國泰金","ex":"TW","sector":"金控"},
+            {"code":"2603","name":"長榮",  "ex":"TW","sector":"航運"},
+        ]
+    return stocks
 
 # ── 數學工具 ──────────────────────────────────────────
 def ema(arr, period):
@@ -104,15 +110,15 @@ def sma(arr, period):
     return result
 
 def wmax(arr, n, end):
-    sl = [v for v in arr[max(0, end - n + 1):end + 1] if v is not None]
+    sl = [v for v in arr[max(0, end-n+1):end+1] if v is not None]
     return max(sl) if sl else None
 
 def wmin(arr, n, end):
-    sl = [v for v in arr[max(0, end - n + 1):end + 1] if v is not None]
+    sl = [v for v in arr[max(0, end-n+1):end+1] if v is not None]
     return min(sl) if sl else None
 
 def wmean(arr, n, end):
-    sl = [v for v in arr[max(0, end - n + 1):end + 1] if v is not None and not np.isnan(v)]
+    sl = [v for v in arr[max(0, end-n+1):end+1] if v is not None and not np.isnan(v)]
     return sum(sl) / len(sl) if sl else None
 
 def get(arr, i):
@@ -122,14 +128,13 @@ def get(arr, i):
 def true_range(highs, lows, closes):
     tr = []
     for i in range(len(closes)):
-        h, l, c = highs[i], lows[i], closes[i]
+        h, l = highs[i], lows[i]
         if h is None or l is None:
-            tr.append(None)
-            continue
-        if i == 0 or closes[i - 1] is None:
+            tr.append(None); continue
+        if i == 0 or closes[i-1] is None:
             tr.append(h - l)
         else:
-            pc = closes[i - 1]
+            pc = closes[i-1]
             tr.append(max(h - l, abs(h - pc), abs(l - pc)))
     return tr
 
@@ -138,15 +143,12 @@ def calc_conditions(close, high, low, volume):
     n = len(close)
     if n < 252:
         return None
-
     last = n - 1
     while last > 0 and (close[last] is None or np.isnan(close[last])):
         last -= 1
     if last < 251:
         return None
-
-    c = close[last]
-    v = volume[last]
+    c, v = close[last], volume[last]
     if not c or not v:
         return None
 
@@ -156,46 +158,41 @@ def calc_conditions(close, high, low, volume):
     ma30w = sma(close, 150)
     vol50 = sma(volume, 50)
 
-    if not all([get(ma50, last), get(ma150, last), get(ma200, last), get(ma30w, last)]):
+    if not all([get(ma50,last), get(ma150,last), get(ma200,last), get(ma30w,last)]):
         return None
 
-    h52 = wmax(high,  252, last)
-    l52 = wmin(low,   252, last)
+    h52 = wmax(high, 252, last)
+    l52 = wmin(low,  252, last)
 
-    # Stage 2
-    stage2 = (c > get(ma30w, last)) and (get(ma30w, last) > get(ma30w, last - 4))
-
-    # Minervini TT
-    m1 = c > get(ma150, last) and c > get(ma200, last)
-    m2 = get(ma150, last) > get(ma200, last)
-    m3 = get(ma200, last) > get(ma200, last - 20) if last >= 20 else False
-    m4 = get(ma50, last) > get(ma150, last) and get(ma50, last) > get(ma200, last)
-    m5 = c > get(ma50, last)
+    stage2 = c > get(ma30w, last) and get(ma30w, last) > get(ma30w, last-4)
+    m1 = c > get(ma150,last) and c > get(ma200,last)
+    m2 = get(ma150,last) > get(ma200,last)
+    m3 = get(ma200,last) > get(ma200,last-20) if last >= 20 else False
+    m4 = get(ma50,last) > get(ma150,last) and get(ma50,last) > get(ma200,last)
+    m5 = c > get(ma50,last)
     m6 = c >= h52 * 0.75 if h52 else False
     m7 = c >= l52 * 1.25 if l52 else False
-    tt_score = sum([m1, m2, m3, m4, m5, m6, m7])
+    tt_score = sum([m1,m2,m3,m4,m5,m6,m7])
     tt = tt_score == 7
 
-    # VCP
     atr_arr  = sma(true_range(high, low, close), 14)
     atr_now  = wmean(atr_arr, 10, last)
-    atr_prev = wmean(atr_arr, 10, last - 10)
+    atr_prev = wmean(atr_arr, 10, last-10)
     vol_now  = wmean(volume, 10, last)
-    vol_prev = wmean(volume, 10, last - 10)
+    vol_prev = wmean(volume, 10, last-10)
     vcp = bool(
-        atr_now and atr_prev and vol_now and vol_prev and h52 and
-        atr_now  < atr_prev * 0.75 and
-        vol_now  < vol_prev * 0.80 and
-        c >= h52 * 0.70
+        atr_now and atr_prev and vol_now and vol_prev and h52
+        and atr_now < atr_prev * 0.75
+        and vol_now < vol_prev * 0.80
+        and c >= h52 * 0.70
     )
 
-    # 突破（A方案：量 >= 1.2x）
-    pivot   = wmax(high, 20, last - 1)
+    pivot   = wmax(high, 20, last-1)
     avg_vol = get(vol50, last)
     brk = bool(pivot and avg_vol and c > pivot and v > avg_vol * 1.2 and c <= pivot * 1.05)
 
-    score = sum([stage2, tt, vcp, brk])
-    sl    = wmin(low, 20, last)
+    score    = sum([stage2, tt, vcp, brk])
+    sl       = wmin(low, 20, last)
     risk_pct = (c - sl) / c * 100 if sl else None
 
     return {
@@ -205,112 +202,120 @@ def calc_conditions(close, high, low, volume):
     }
 
 # ── 資料抓取 ──────────────────────────────────────────
-def fetch_ohlcv(stock, retries=3):
+def fetch_ohlcv(stock, retries=2):
     suffix = ".TWO" if stock["ex"] == "TWO" else ".TW"
-    sym    = stock["code"] + suffix
-    url    = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=2y"
-    headers = {"User-Agent": "Mozilla/5.0"}
-
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{stock['code']}{suffix}?interval=1d&range=2y"
     for attempt in range(retries):
         try:
-            r = requests.get(url, headers=headers, timeout=15)
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=12)
             if r.status_code != 200:
-                time.sleep(2)
-                continue
-            data = r.json()
-            result = data["chart"]["result"][0]
+                time.sleep(1); continue
+            result = r.json()["chart"]["result"][0]
             q = result["indicators"]["quote"][0]
-
-            def fix(arr):
-                return [v if v is not None and not np.isnan(v) else None for v in (arr or [])]
-
+            fix = lambda arr: [v if v is not None and not np.isnan(v) else None for v in (arr or [])]
             return {
-                "close":  fix(q.get("close", [])),
-                "high":   fix(q.get("high", [])),
-                "low":    fix(q.get("low", [])),
+                "close":  fix(q.get("close",  [])),
+                "high":   fix(q.get("high",   [])),
+                "low":    fix(q.get("low",    [])),
                 "volume": fix(q.get("volume", [])),
             }
         except Exception as e:
-            print(f"  [{stock['code']}] attempt {attempt+1} failed: {e}")
-            time.sleep(3)
+            if attempt < retries - 1:
+                time.sleep(2)
     return None
+
+# ── 掃描單支股票（供多執行緒使用）─────────────────────
+def scan_one(stock):
+    data = fetch_ohlcv(stock)
+    if not data:
+        return stock, None, "無資料"
+    cond = calc_conditions(data["close"], data["high"], data["low"], data["volume"])
+    if not cond:
+        return stock, None, "資料不足"
+    return stock, cond, "ok"
 
 # ── Telegram 發送 ─────────────────────────────────────
 def send_telegram(text):
     url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    data = {
-        "chat_id":    TELEGRAM_CHAT_ID,
-        "text":       text,
-        "parse_mode": "HTML",
-    }
-    r = requests.post(url, data=data, timeout=10)
-    if not r.ok:
-        print(f"Telegram error: {r.text}")
+    data = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"}
+    try:
+        r = requests.post(url, data=data, timeout=10)
+        if not r.ok:
+            safe_print(f"[Telegram 錯誤] {r.text}")
+    except Exception as e:
+        safe_print(f"[Telegram 例外] {e}")
+
+def send_long_message(text):
+    """自動分割超過 TG_MAX_LEN 的訊息"""
+    if len(text) <= TG_MAX_LEN:
+        send_telegram(text)
+        return
+    lines  = text.split("\n")
+    chunk  = ""
+    for line in lines:
+        if len(chunk) + len(line) + 1 > TG_MAX_LEN:
+            send_telegram(chunk)
+            time.sleep(0.5)
+            chunk = line + "\n"
+        else:
+            chunk += line + "\n"
+    if chunk.strip():
+        send_telegram(chunk)
 
 # ── 訊息格式化 ────────────────────────────────────────
 def fmt_price(p):
-    if p is None:
-        return "—"
-    return f"{p:,.1f}"
+    return f"{p:,.1f}" if p else "—"
 
 def fmt_money(n):
-    if abs(n) >= 1e8:
-        return f"{n/1e8:.2f}億"
-    if abs(n) >= 1e4:
-        return f"{n/1e4:.1f}萬"
+    if abs(n) >= 1e8: return f"{n/1e8:.2f}億"
+    if abs(n) >= 1e4: return f"{n/1e4:.1f}萬"
     return f"{int(n):,}"
 
-def build_message(entries, watches, scan_time):
-    tz_tw = timezone(timedelta(hours=8))
-    dt    = datetime.now(tz_tw)
-    date_str = dt.strftime("%Y/%m/%d")
-    time_str = scan_time
+def build_message(entries, watches, total, errors, scan_time, date_str):
+    lines = [
+        f"📊 <b>台股動能掃描 {date_str}</b>",
+        f"⏰ {scan_time}  掃描 {total} 支 · 失敗 {errors} 支\n",
+    ]
 
-    lines = [f"📊 <b>台股動能掃描 {date_str}</b>"]
-    lines.append(f"⏰ {time_str} 更新\n")
-
-    # 今日進場
-    lines.append(f"🟢 <b>今日進場 {len(entries)} 支</b>")
+    lines.append(f"🟢 <b>今日進場 {len(entries)} 支</b>（A方案：突破＋score≥3）")
     if entries:
         lines.append("━━━━━━━━━━━━━━━━━━━")
         for s in entries:
-            risk    = s["cond"]["risk_pct"]
-            sl      = s["cond"]["stop_loss"]
-            pivot   = s["cond"]["pivot"]
-            price   = s["cond"]["price"]
-            target  = price + 2 * (price - sl) if sl else None
-            pos_wan = (CAPITAL * 10000 * 0.01 / (risk / 100)) / 10000 if risk else None
-
-            lines.append(f"▶ <b>{s['code']} {s['name']}</b>（{s['sector']}）")
-            lines.append(f"   進場 NT${fmt_price(price)} | 停損 NT${fmt_price(sl)} | 目標 NT${fmt_price(target)}")
+            c   = s["cond"]
+            sl  = c["stop_loss"]
+            p   = c["price"]
+            tgt = p + 2 * (p - sl) if sl else None
+            risk = c["risk_pct"]
+            pos  = (CAPITAL * 10000 * 0.01 / (risk / 100)) / 10000 if risk else None
+            cond_tags = " ".join(
+                t for t, ok in [("Stage2",c["stage2"]),("TT",c["tt"]),("VCP",c["vcp"])] if ok
+            )
+            lines.append(f"\n▶ <b>{s['code']} {s['name']}</b>（{s['sector']}）")
+            lines.append(f"   進場 NT${fmt_price(p)} ｜ 停損 NT${fmt_price(sl)} ｜ 目標 NT${fmt_price(tgt)}")
             if risk:
-                lines.append(f"   風險 {risk:.1f}% | 成本/張 {fmt_money(price * SHARES)}")
-            if pos_wan:
-                lines.append(f"   建議部位 {pos_wan:.1f}萬（{CAPITAL}萬資金×1%規則）")
-            conds = []
-            if s["cond"]["stage2"]: conds.append("Stage2✓")
-            if s["cond"]["tt"]:     conds.append("TT7/7✓")
-            if s["cond"]["vcp"]:    conds.append("VCP✓")
-            lines.append(f"   條件：{'  '.join(conds)}")
-            lines.append("")
+                lines.append(f"   風險 {risk:.1f}% ｜ 成本/張 {fmt_money(p * SHARES)}")
+            if pos:
+                lines.append(f"   建議部位 {pos:.1f}萬（{CAPITAL}萬×1%規則）")
+            if cond_tags:
+                lines.append(f"   達成：{cond_tags}")
     else:
         lines.append("   今日無進場訊號\n")
 
-    # 觀察名單
-    lines.append(f"🟡 <b>觀察名單 {len(watches)} 支</b>（等突破）")
-    if watches:
+    watch_show = watches[:WATCH_LIMIT]
+    extra = len(watches) - len(watch_show)
+    lines.append(f"\n🟡 <b>觀察名單 {len(watches)} 支</b>（等突破）")
+    if watch_show:
         lines.append("━━━━━━━━━━━━━━━━━━━")
-        for s in watches:
-            pivot = s["cond"]["pivot"]
-            miss  = []
-            if not s["cond"]["stage2"]: miss.append("Stage2")
-            if not s["cond"]["tt"]:     miss.append("TT")
-            if not s["cond"]["vcp"]:    miss.append("VCP")
+        for s in watch_show:
+            c = s["cond"]
+            miss = [t for t, ok in [("Stage2",c["stage2"]),("TT",c["tt"]),("VCP",c["vcp"])] if not ok]
             miss_str = "、".join(miss) if miss else "突破"
             lines.append(
                 f"▷ <b>{s['code']} {s['name']}</b>（{s['sector']}）"
-                f"  缺{miss_str}  突破點 NT${fmt_price(pivot)}"
+                f"  缺{miss_str}  突破點 NT${fmt_price(c['pivot'])}"
             )
+        if extra:
+            lines.append(f"   ⋯ 另有 {extra} 支，詳見網頁版")
     else:
         lines.append("   無觀察標的")
 
@@ -318,63 +323,58 @@ def build_message(entries, watches, scan_time):
 
 # ── 主程式 ────────────────────────────────────────────
 def main():
-    tz_tw    = timezone(timedelta(hours=8))
-    now_tw   = datetime.now(tz_tw)
+    tz_tw     = timezone(timedelta(hours=8))
+    now_tw    = datetime.now(tz_tw)
     scan_time = now_tw.strftime("%H:%M")
+    date_str  = now_tw.strftime("%Y/%m/%d")
 
-    print(f"=== 台股動能掃描 {now_tw.strftime('%Y/%m/%d %H:%M')} ===")
-    print(f"掃描 {len(STOCKS)} 支股票...")
+    safe_print(f"=== 台股動能掃描 {date_str} {scan_time} ===")
 
-    entries = []
-    watches = []
-    errors  = 0
+    # 取得股票清單
+    safe_print("取得 TWSE/TPEX 股票清單...")
+    stocks = fetch_stock_list()
+    safe_print(f"股票清單：{len(stocks)} 支")
 
-    for i, stock in enumerate(STOCKS, 1):
-        print(f"[{i:02d}/{len(STOCKS)}] {stock['code']} {stock['name']}...")
-        data = fetch_ohlcv(stock)
-        if not data:
-            print(f"  → 無法取得資料")
-            errors += 1
-            time.sleep(1)
-            continue
+    entries, watches = [], []
+    errors = 0
+    done   = 0
+    total  = len(stocks)
 
-        cond = calc_conditions(
-            data["close"], data["high"], data["low"], data["volume"]
-        )
-        if not cond:
-            print(f"  → 資料不足")
-            errors += 1
-            time.sleep(0.5)
-            continue
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(scan_one, s): s for s in stocks}
+        for future in as_completed(futures):
+            stock, cond, status = future.result()
+            done += 1
+            if done % 50 == 0 or done == total:
+                safe_print(f"  進度 {done}/{total}  進場 {len(entries)} 觀察 {len(watches)}")
 
-        price = cond["price"]
-        if price > MAX_PRICE:
-            print(f"  → 股價 {price:.0f} 超過上限，略過")
-            time.sleep(0.5)
-            continue
+            if status != "ok" or cond is None:
+                errors += 1
+                continue
 
-        entry = {**stock, "cond": cond}
+            entry = {**stock, "cond": cond}
+            if cond["brk"] and cond["score"] >= 3:
+                entries.append(entry)
+                safe_print(f"  ★ 進場！{stock['code']} {stock['name']} score={cond['score']}")
+            elif not cond["brk"] and cond["score"] >= 3:
+                watches.append(entry)
 
-        # A方案：突破必須 + score >= 3
-        if cond["brk"] and cond["score"] >= 3:
-            entries.append(entry)
-            print(f"  → ★ 今日進場！score={cond['score']} price={price:.1f}")
-        elif not cond["brk"] and cond["score"] >= 3:
-            watches.append(entry)
-            print(f"  → 觀察名單 score={cond['score']} pivot={cond['pivot']:.1f}")
-        else:
-            print(f"  → score={cond['score']} brk={cond['brk']}")
+    # 依 score 降冪排列
+    entries.sort(key=lambda x: x["cond"]["score"], reverse=True)
+    watches.sort(key=lambda x: x["cond"]["score"], reverse=True)
 
-        time.sleep(0.8)  # 避免 Yahoo Finance rate limit
+    safe_print(f"\n結果：進場 {len(entries)} 支，觀察 {len(watches)} 支，失敗 {errors} 支")
 
-    print(f"\n結果：進場 {len(entries)} 支，觀察 {len(watches)} 支，失敗 {errors} 支")
-
-    # 發送 Telegram
-    msg = build_message(entries, watches, scan_time)
-    send_telegram(msg)
-    print("\n=== Telegram 訊息 ===")
-    print(msg)
-    print("=== 完成！===")
+    msg = build_message(entries, watches, total, errors, scan_time, date_str)
+    safe_print("\n=== 發送 Telegram ===")
+    safe_print(msg)
+    send_long_message(msg)
+    safe_print("=== 完成 ===")
 
 if __name__ == "__main__":
+    # UTF-8 stdout（Windows 環境）
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, 'buffer'):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
     main()
