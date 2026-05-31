@@ -165,6 +165,11 @@ tr.hold { background: rgba(88,166,255,.04); }
       <span style="color:var(--text);font-weight:700;padding:0 4px">1 張</span>
       <span>＝ 1000 股</span>
     </div>
+    <div class="capital-wrap">
+      <label for="maxPrice">股價上限</label>
+      <input id="maxPrice" type="number" value="100" min="1" max="9999" onchange="applyFilter()">
+      <span>元 / 股</span>
+    </div>
     <span class="meta" id="statText"></span>
     <span class="meta" id="updatedAt"></span>
   </div>
@@ -503,10 +508,7 @@ async function runBacktest() {
   // Sort newest first
   allSignals.sort((a, b) => b.entryTs - a.entryTs);
 
-  renderSummary(allSignals);
-  renderSectorGrid(allSignals);
-  renderFilterBar(allSignals);
-  renderTradeTable(allSignals, 'all');
+  applyFilter(); // 套用股價上限過濾
 
   const now = new Date();
   document.getElementById('updatedAt').textContent =
@@ -531,6 +533,19 @@ function tvUrl(s) { return `https://www.tradingview.com/chart/?symbol=${s.ex==='
 
 const SHARES = 1000; // 台灣一張 = 1000 股
 
+function getMaxPrice() {
+  return parseFloat(document.getElementById('maxPrice').value) || 100;
+}
+
+function applyFilter() {
+  if (!allSignals.length) return;
+  const filtered = allSignals.filter(s => s.entryPrice <= getMaxPrice());
+  renderSummary(filtered);
+  renderSectorGrid(filtered);
+  renderFilterBar(filtered);
+  renderTradeTable(filtered, activeFilter);
+}
+
 function fmtMoney(n) {
   const abs = Math.abs(n);
   if (abs >= 1e8) return (n/1e8).toFixed(2) + '億';
@@ -540,19 +555,27 @@ function fmtMoney(n) {
 
 function renderSummary(signals) {
   const completed = signals.filter(s => s.exitReason !== '持有中');
-  const wins      = signals.filter(s => s.exitReason === '達標 (2R)');
+  const wins2R    = signals.filter(s => s.exitReason === '達標 (2R)');
   const losses    = signals.filter(s => s.exitReason === '停損出場');
   const timeExit  = signals.filter(s => s.exitReason.startsWith('時間出場'));
   const holding   = signals.filter(s => s.exitReason === '持有中');
 
-  const wr   = completed.length ? (wins.length / completed.length * 100).toFixed(0) : '—';
-  const avgW = wins.length   ? (wins.reduce((a,s)=>a+s.pnlPct,0)/wins.length).toFixed(1)   : '—';
-  const avgL = losses.length ? (losses.reduce((a,s)=>a+s.pnlPct,0)/losses.length).toFixed(1) : '—';
+  // 勝率：出場時 pnlPct > 0 的比例（不管是哪種出場方式）
+  const profitTrades = completed.filter(s => s.pnlPct > 0);
+  const lossTrades   = completed.filter(s => s.pnlPct <= 0);
+  const wr = completed.length ? (profitTrades.length / completed.length * 100).toFixed(0) : '—';
 
+  const avgW = profitTrades.length ? (profitTrades.reduce((a,s)=>a+s.pnlPct,0)/profitTrades.length).toFixed(1) : '—';
+  const avgL = lossTrades.length   ? (lossTrades.reduce((a,s)=>a+s.pnlPct,0)/lossTrades.length).toFixed(1)     : '—';
+  const wins = profitTrades; // alias for card display
+
+  // EV 用實際平均獲利/虧損計算（非固定 2R/-1R）
   let evR = '—';
-  if (completed.length) {
-    const wrNum = wins.length / completed.length;
-    evR = (wrNum * 2 - (1 - wrNum) * 1).toFixed(2);
+  if (completed.length && parseFloat(avgW) && parseFloat(avgL)) {
+    const wrNum  = profitTrades.length / completed.length;
+    const avgWnum = parseFloat(avgW), avgLnum = parseFloat(avgL);
+    const ev = wrNum * avgWnum + (1 - wrNum) * avgLnum;
+    evR = (ev >= 0 ? '+' : '') + ev.toFixed(1) + '%';
   }
 
   // 金額計算（每張 = 1000 股，成本 = 進場價 × 1000）
@@ -570,27 +593,27 @@ function renderSummary(signals) {
     <div class="sum-card">
       <div class="sum-label">觸發訊號</div>
       <div class="sum-value col-blue">${signals.length} 筆</div>
-      <div class="sum-sub">達標 ${wins.length} · 停損 ${losses.length} · 時間出場 ${timeExit.length} · 持有中 ${holding.length}</div>
+      <div class="sum-sub">達標 ${wins2R.length} · 停損 ${losses.length} · 時間出場 ${timeExit.length} · 持有中 ${holding.length}</div>
     </div>
     <div class="sum-card">
       <div class="sum-label">勝率</div>
       <div class="sum-value ${parseFloat(wr)>=50?'col-green':'col-red'}">${wr}%</div>
-      <div class="sum-sub">勝 ${wins.length} / 敗 ${losses.length}</div>
+      <div class="sum-sub">出場獲利 ${profitTrades.length} / 出場虧損 ${lossTrades.length}</div>
     </div>
     <div class="sum-card">
       <div class="sum-label">平均獲利</div>
       <div class="sum-value col-green">${avgW !== '—' ? '+'+avgW+'%' : '—'}</div>
-      <div class="sum-sub">達標出場均值</div>
+      <div class="sum-sub">獲利出場均值（含時間出場）</div>
     </div>
     <div class="sum-card">
       <div class="sum-label">平均虧損</div>
       <div class="sum-value col-red">${avgL !== '—' ? avgL+'%' : '—'}</div>
-      <div class="sum-sub">停損出場均值</div>
+      <div class="sum-sub">虧損出場均值（含時間出場）</div>
     </div>
     <div class="sum-card">
       <div class="sum-label">期望值</div>
-      <div class="sum-value ${parseFloat(evR)>0?'col-green':'col-red'}">${evR !== '—' ? evR+'R' : '—'}</div>
-      <div class="sum-sub">每筆平均 X 個風險單位</div>
+      <div class="sum-value ${evR!=='—'&&evR[0]==='+'?'col-green':'col-red'}">${evR}</div>
+      <div class="sum-sub">勝率×均獲利 + 敗率×均虧損</div>
     </div>
     <div class="divider"></div>
     <div class="sum-card">
