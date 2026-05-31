@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>30天回測報告 | 台股動能策略</title>
+<style>
+:root {
+  --bg:     #0d1117;
+  --bg2:    #161b22;
+  --bg3:    #21262d;
+  --border: #30363d;
+  --text:   #e6edf3;
+  --muted:  #8b949e;
+  --green:  #3fb950;
+  --yellow: #d29922;
+  --red:    #f85149;
+  --blue:   #58a6ff;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+.container { max-width: 1300px; margin: 0 auto; padding: 24px 16px; }
+
+/* ── Nav ── */
+.nav { margin-bottom: 20px; display: flex; gap: 12px; font-size: 12px; }
+.nav a { color: var(--muted); text-decoration: none; }
+.nav a:hover { color: var(--text); }
+.nav span { color: var(--border); }
+
+/* ── Header ── */
+h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+.rules-line { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+.rules-line span { color: var(--blue); margin: 0 4px; }
+
+.controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+#runBtn {
+  background: var(--green); color: #000;
+  border: none; padding: 8px 22px;
+  border-radius: 6px; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+#runBtn:hover { opacity: .85; }
+#runBtn:disabled { opacity: .45; cursor: not-allowed; }
+.meta { color: var(--muted); font-size: 12px; }
+
+/* ── Progress ── */
+.progress-wrap { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; }
+.progress-track { background: var(--bg3); border-radius: 4px; height: 5px; overflow: hidden; margin-bottom: 7px; }
+.progress-fill  { background: var(--blue); height: 100%; border-radius: 4px; transition: width .2s; width: 0%; }
+.progress-label { color: var(--muted); font-size: 12px; }
+
+/* ── Summary Cards ── */
+.summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+.sum-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 16px;
+}
+.sum-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 6px; }
+.sum-value { font-size: 22px; font-weight: 700; font-family: monospace; }
+.sum-sub   { color: var(--muted); font-size: 11px; margin-top: 3px; }
+.col-green  { color: var(--green); }
+.col-red    { color: var(--red);   }
+.col-yellow { color: var(--yellow);}
+.col-blue   { color: var(--blue);  }
+
+/* ── Sector Stats ── */
+.section-title { font-size: 14px; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
+
+.sector-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-bottom: 24px; }
+.sector-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px 14px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.sector-name { font-size: 13px; font-weight: 600; }
+.sector-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.sector-wr   { font-size: 16px; font-weight: 700; font-family: monospace; }
+
+/* ── Trade Table ── */
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 20px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead { background: var(--bg2); position: sticky; top: 0; }
+th { padding: 9px 10px; text-align: left; color: var(--muted); font-weight: 500; white-space: nowrap; border-bottom: 1px solid var(--border); cursor: default; }
+td { padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+
+tr.win  { background: rgba(63,185,80,.06); }
+tr.loss { background: rgba(248,81,73,.06); }
+tr.hold { background: rgba(88,166,255,.04); }
+
+.tag {
+  display: inline-block; border-radius: 4px;
+  padding: 2px 8px; font-size: 11px; font-weight: 700;
+}
+.tag-win  { background: rgba(63,185,80,.2);  color: var(--green);  }
+.tag-loss { background: rgba(248,81,73,.15); color: var(--red);    }
+.tag-hold { background: rgba(88,166,255,.15);color: var(--blue);   }
+
+.mono { font-family: monospace; }
+.code-link { color: var(--blue); text-decoration: none; font-weight: 700; }
+.code-link:hover { text-decoration: underline; }
+
+/* ── Info ── */
+.info-box { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.info-box summary { padding: 10px 14px; cursor: pointer; color: var(--muted); font-size: 12px; background: var(--bg2); user-select: none; }
+.info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; padding: 14px; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.info-grid strong { color: var(--text); display: block; margin-bottom: 3px; }
+
+/* ── Empty ── */
+.empty { text-align: center; padding: 60px 16px; color: var(--muted); }
+.empty .icon { font-size: 40px; margin-bottom: 10px; }
+
+/* ── Filter ── */
+.filter-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.filter-tag {
+  padding: 4px 12px; border-radius: 20px; font-size: 12px;
+  border: 1px solid var(--border); background: var(--bg3);
+  color: var(--muted); cursor: pointer; transition: all .15s;
+}
+.filter-tag.active { border-color: var(--blue); background: rgba(88,166,255,.1); color: var(--text); }
+
+@media (max-width: 768px) {
+  .summary-grid { grid-template-columns: repeat(3, 1fr); }
+  .info-grid { grid-template-columns: 1fr; }
+  td, th { padding: 6px 8px; font-size: 11px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="nav">
+  <a href="index.html">← 舊版掃描器</a>
+  <span>|</span>
+  <a href="v2.html">v2 掃描器</a>
+</div>
+
+<header>
+  <h1>30天回測報告</h1>
+  <p class="subtitle">熱門類股（半導體 / 電子 / 光電 / 生技 / 電機）· Minervini + Weinstein 動能策略</p>
+  <p class="rules-line">
+    進場：<span>4/4 突破訊號當日收盤</span>
+    停損：<span>近20根K棒最低點</span>
+    目標：<span>進場價 + 2倍風險（2R）</span>
+    忽略：<span>滑價 / 手續費</span>
+  </p>
+  <div class="controls">
+    <button id="runBtn" onclick="runBacktest()">▶ 開始回測</button>
+    <span class="meta" id="statText"></span>
+    <span class="meta" id="updatedAt"></span>
+  </div>
+</header>
+
+<div id="progressWrap" class="progress-wrap" style="display:none">
+  <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="progress-label" id="progressLabel">準備中...</div>
+</div>
+
+<!-- Summary -->
+<div id="summarySection" style="display:none">
+  <div class="summary-grid" id="summaryCards"></div>
+
+  <p class="section-title">各類股勝率</p>
+  <div id="sectorGrid" class="sector-grid"></div>
+
+  <!-- Filter -->
+  <div class="filter-bar" id="filterBar"></div>
+
+  <p class="section-title">交易明細（新→舊）</p>
+  <div id="tradeTable"></div>
+</div>
+
+<!-- Empty state -->
+<div id="emptyState" class="empty">
+  <div class="icon">📊</div>
+  <div>點擊「開始回測」取得過去30天的回測報告</div>
+</div>
+
+<!-- Rules -->
+<details class="info-box" style="margin-top:16px">
+  <summary>▸ 回測規則說明（點開）</summary>
+  <div class="info-grid">
+    <div><strong>進場條件</strong>過去30天內，某日收盤同時符合 4 個條件：Stage2 ✓、TT 7/7 ✓、VCP ✓、量能突破 ✓，以當日收盤價進場。</div>
+    <div><strong>停損</strong>進場當日計算之近20根K棒最低點。之後每日掃：當日最低 ≤ 停損 → 停損出場。</div>
+    <div><strong>目標（2R）</strong>進場價 + 2×（進場 - 停損）。當日最高 ≥ 目標 → 達標出場。勝率若 > 33% 則期望值為正。</div>
+    <div><strong>持有中</strong>尚未碰到停損或目標 → 以最新收盤計算浮動損益。</div>
+    <div><strong>R值</strong>損益 ÷ 單筆風險。+2R = 賺了2倍風險、-1R = 虧了1個風險單位。</div>
+    <div><strong>注意</strong>回測不含滑價、手續費（約0.3%/來回），實際損益會略低。同一支股票可能多次進場。</div>
+  </div>
+</details>
+
+</div>
+
+<script src="stocks.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════
+   熱門類股篩選
+═══════════════════════════════════════════════════════ */
+const HOT_SECTORS = new Set([
+  '半導體業','電腦週邊','光電業','通信網路','電子零組件',
+  '電子通路','資訊服務','其他電子','電機機械','電子工業',
+  '生技醫療','生技','電器電纜',
+]);
+
+const BT_STOCKS = STOCKS.filter(s => HOT_SECTORS.has(s.sector));
+
+/* ═══════════════════════════════════════════════════════
+   數學工具（同 v2）
+═══════════════════════════════════════════════════════ */
+function ema(arr, period) {
+  const k = 2 / (period + 1), res = new Array(arr.length).fill(null);
+  let sum = 0, cnt = 0, seedEnd = -1;
+  for (let i = 0; i < arr.length; i++) {
+    const v = arr[i];
+    if (v !== null && !isNaN(v)) { sum += v; cnt++; if (cnt === period) { seedEnd = i; break; } }
+  }
+  if (seedEnd === -1) return res;
+  let prev = sum / period; res[seedEnd] = prev;
+  for (let i = seedEnd + 1; i < arr.length; i++) {
+    const v = arr[i];
+    if (v === null || isNaN(v)) { res[i] = prev; continue; }
+    prev = v * k + prev * (1 - k); res[i] = prev;
+  }
+  return res;
+}
+function sma(arr, period) {
+  return arr.map((_, i) => {
+    if (i < period - 1) return null;
+    const sl = arr.slice(i - period + 1, i + 1).filter(v => v !== null && !isNaN(v));
+    if (sl.length < Math.floor(period * 0.8)) return null;
+    return sl.reduce((a, b) => a + b, 0) / sl.length;
+  });
+}
+function trueRange(highs, lows, closes) {
+  return closes.map((_, i) => {
+    if (i === 0 || closes[i-1] === null) return highs[i] - lows[i];
+    const pc = closes[i-1];
+    return Math.max(highs[i]-lows[i], Math.abs(highs[i]-pc), Math.abs(lows[i]-pc));
+  });
+}
+function wMax(arr, n, end) { const sl = arr.slice(Math.max(0,end-n+1),end+1).filter(v=>v!==null); return sl.length ? Math.max(...sl) : null; }
+function wMin(arr, n, end) { const sl = arr.slice(Math.max(0,end-n+1),end+1).filter(v=>v!==null); return sl.length ? Math.min(...sl) : null; }
+function wMean(arr, n, end) { const sl = arr.slice(Math.max(0,end-n+1),end+1).filter(v=>v!==null&&!isNaN(v)); return sl.length ? sl.reduce((a,b)=>a+b,0)/sl.length : null; }
+function get(arr, i) { return arr[Math.max(0,i)] ?? null; }
+
+function calcConditions({ close, high, low, volume }) {
+  const n = close.length;
+  if (n < 252) return null;
+  let last = n - 1;
+  while (last > 0 && (close[last] === null || isNaN(close[last]))) last--;
+  if (last < 251) return null;
+  const c = close[last], v = volume[last];
+  if (!c || !v) return null;
+  const ma50 = ema(close,50), ma150 = ema(close,150), ma200 = ema(close,200);
+  const ma30w = sma(close,150), vol50 = sma(volume,50);
+  if (!get(ma50,last)||!get(ma150,last)||!get(ma200,last)||!get(ma30w,last)) return null;
+  const h52 = wMax(high,252,last), l52 = wMin(low,252,last);
+  const stage2 = c > get(ma30w,last) && get(ma30w,last) > get(ma30w,last-4);
+  const m1 = c>get(ma150,last)&&c>get(ma200,last);
+  const m2 = get(ma150,last)>get(ma200,last);
+  const m3 = last>=20 ? get(ma200,last)>get(ma200,last-20) : false;
+  const m4 = get(ma50,last)>get(ma150,last)&&get(ma50,last)>get(ma200,last);
+  const m5 = c>get(ma50,last);
+  const m6 = h52 ? c>=h52*0.75 : false;
+  const m7 = l52 ? c>=l52*1.25 : false;
+  const ttScore = [m1,m2,m3,m4,m5,m6,m7].filter(Boolean).length, tt = ttScore===7;
+  const atrArr=sma(trueRange(high,low,close),14);
+  const atrNow=wMean(atrArr,10,last), atrPrev=wMean(atrArr,10,last-10);
+  const volNow=wMean(volume,10,last), volPrev=wMean(volume,10,last-10);
+  const vcp = !!(atrNow&&atrPrev&&volNow&&volPrev&&h52 && atrNow<atrPrev*0.75&&volNow<volPrev*0.80&&c>=h52*0.70);
+  const pivot=wMax(high,20,last-1), avgVol=get(vol50,last);
+  const brk = !!(pivot&&avgVol&&c>pivot&&v>avgVol*1.4&&c<=pivot*1.05);
+  const score=[stage2,tt,vcp,brk].filter(Boolean).length;
+  const sl=wMin(low,20,last), riskPct=sl?(c-sl)/c*100:null;
+  return { price:c, stage2, tt, ttScore, vcp, brk, pivot, score, riskPct, stopLoss:sl };
+}
+
+/* ═══════════════════════════════════════════════════════
+   資料抓取（含 timestamps）
+═══════════════════════════════════════════════════════ */
+async function fetchBT(stock) {
+  const suffix = stock.ex === 'TWO' ? '.TWO' : '.TW';
+  const sym    = stock.code + suffix;
+  const yUrl   = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=2y`;
+  const proxies = [
+    `https://corsproxy.io/?${encodeURIComponent(yUrl)}`,
+    `https://api.allorigins.win/get?url=${encodeURIComponent(yUrl)}`,
+  ];
+  for (const pUrl of proxies) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 13000);
+    try {
+      const res = await fetch(pUrl, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      let json = await res.json();
+      if (json.contents) json = JSON.parse(json.contents);
+      const r = json?.chart?.result?.[0];
+      if (!r || !r.timestamp) continue;
+      const q   = r.indicators.quote[0];
+      const fix = arr => (arr||[]).map(v => (v==null||isNaN(v)) ? null : v);
+      return {
+        timestamps: r.timestamp,
+        close:  fix(q.close),
+        high:   fix(q.high),
+        low:    fix(q.low),
+        volume: fix(q.volume),
+      };
+    } catch (_) { clearTimeout(timer); }
+  }
+  return null;
+}
+
+/* ═══════════════════════════════════════════════════════
+   回測單支股票
+═══════════════════════════════════════════════════════ */
+function backtestStock(stock, data) {
+  const { timestamps, close, high, low, volume } = data;
+  const n = close.length;
+  if (n < 260) return [];
+
+  const cutoff = Date.now() / 1000 - 30 * 86400; // 30天前
+  const signals = [];
+
+  for (let i = 252; i < n - 1; i++) {
+    if (timestamps[i] < cutoff) continue; // 只看最近30天
+
+    const slice = {
+      close:  close.slice(0, i + 1),
+      high:   high.slice(0, i + 1),
+      low:    low.slice(0, i + 1),
+      volume: volume.slice(0, i + 1),
+    };
+
+    const cond = calcConditions(slice);
+    if (!cond || cond.score < 4 || !cond.brk) continue;
+
+    const entryPrice = close[i];
+    const stopLoss   = cond.stopLoss;
+    if (!stopLoss || stopLoss >= entryPrice) continue;
+
+    const risk       = entryPrice - stopLoss;
+    const takeProfit = entryPrice + 2 * risk;
+
+    // 向前掃描：找到停損或目標
+    let exitPrice  = close[n - 1] ?? entryPrice;
+    let exitTs     = timestamps[n - 1];
+    let exitReason = '持有中';
+
+    for (let j = i + 1; j < n; j++) {
+      if (low[j] !== null && low[j] <= stopLoss) {
+        exitPrice  = stopLoss;
+        exitTs     = timestamps[j];
+        exitReason = '停損出場';
+        break;
+      }
+      if (high[j] !== null && high[j] >= takeProfit) {
+        exitPrice  = takeProfit;
+        exitTs     = timestamps[j];
+        exitReason = '達標 (2R)';
+        break;
+      }
+    }
+
+    const pnl     = exitPrice - entryPrice;
+    const pnlPct  = pnl / entryPrice * 100;
+    const rMult   = pnl / risk;
+    const daysHeld = Math.round((exitTs - timestamps[i]) / 86400);
+
+    signals.push({
+      code: stock.code, name: stock.name,
+      sector: stock.sector, ex: stock.ex,
+      entryTs: timestamps[i], exitTs,
+      entryPrice, stopLoss, takeProfit, exitPrice,
+      exitReason, pnlPct, rMult, daysHeld,
+    });
+  }
+
+  return signals;
+}
+
+/* ═══════════════════════════════════════════════════════
+   主流程
+═══════════════════════════════════════════════════════ */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let running = false;
+let allSignals = [];
+let activeFilter = 'all';
+
+async function runBacktest() {
+  if (running) return;
+  running = true;
+
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 回測中...';
+  document.getElementById('progressWrap').style.display = 'block';
+  document.getElementById('summarySection').style.display = 'none';
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('statText').textContent = `熱門類股共 ${BT_STOCKS.length} 支`;
+  document.getElementById('progressFill').style.width = '0%';
+
+  allSignals = [];
+  let done = 0, dataOk = 0;
+
+  const BATCH = 5;
+  for (let i = 0; i < BT_STOCKS.length; i += BATCH) {
+    const batch = BT_STOCKS.slice(i, i + BATCH);
+    const results = await Promise.all(batch.map(async stock => {
+      const data = await fetchBT(stock);
+      if (!data) return [];
+      return backtestStock(stock, data);
+    }));
+
+    results.forEach((sigs, bi) => {
+      if (sigs.length > 0 || sigs !== null) dataOk++;
+      allSignals.push(...sigs);
+    });
+
+    done += batch.length;
+    const pct = Math.round(done / BT_STOCKS.length * 100);
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progressLabel').textContent =
+      `回測中 ${done} / ${BT_STOCKS.length}（${pct}%）· 已發現 ${allSignals.length} 個訊號`;
+
+    if (i + BATCH < BT_STOCKS.length) await sleep(700);
+  }
+
+  document.getElementById('progressWrap').style.display = 'none';
+  document.getElementById('summarySection').style.display = 'block';
+
+  // Sort newest first
+  allSignals.sort((a, b) => b.entryTs - a.entryTs);
+
+  renderSummary(allSignals);
+  renderSectorGrid(allSignals);
+  renderFilterBar(allSignals);
+  renderTradeTable(allSignals, 'all');
+
+  const now = new Date();
+  document.getElementById('updatedAt').textContent =
+    `完成：${now.toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'})}`;
+  document.getElementById('statText').textContent =
+    `${BT_STOCKS.length} 支熱門類股 · ${allSignals.length} 個回測訊號`;
+
+  btn.disabled = false;
+  btn.textContent = '▶ 重新回測';
+  running = false;
+}
+
+/* ═══════════════════════════════════════════════════════
+   渲染工具
+═══════════════════════════════════════════════════════ */
+function fmtDate(ts) {
+  const d = new Date(ts * 1000);
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+function fmtPrice(p) { return p != null ? p.toFixed(1) : '—'; }
+function tvUrl(s) { return `https://www.tradingview.com/chart/?symbol=${s.ex==='TWO'?'TPEX':'TWSE'}:${s.code}`; }
+
+function renderSummary(signals) {
+  const completed = signals.filter(s => s.exitReason !== '持有中');
+  const wins      = signals.filter(s => s.exitReason === '達標 (2R)');
+  const losses    = signals.filter(s => s.exitReason === '停損出場');
+  const holding   = signals.filter(s => s.exitReason === '持有中');
+
+  const wr  = completed.length ? (wins.length / completed.length * 100).toFixed(0) : '—';
+  const avgW = wins.length   ? (wins.reduce((a,s)=>a+s.pnlPct,0)/wins.length).toFixed(1)   : '—';
+  const avgL = losses.length ? (losses.reduce((a,s)=>a+s.pnlPct,0)/losses.length).toFixed(1) : '—';
+
+  // EV in R: wr * 2R - (1-wr) * 1R
+  let evR = '—';
+  if (completed.length) {
+    const wrNum = wins.length / completed.length;
+    evR = (wrNum * 2 - (1 - wrNum) * 1).toFixed(2);
+  }
+
+  document.getElementById('summaryCards').innerHTML = `
+    <div class="sum-card">
+      <div class="sum-label">觸發訊號</div>
+      <div class="sum-value col-blue">${signals.length}</div>
+      <div class="sum-sub">完成 ${completed.length} · 持有中 ${holding.length}</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-label">勝率</div>
+      <div class="sum-value ${parseFloat(wr)>=50?'col-green':'col-red'}">${wr}%</div>
+      <div class="sum-sub">勝 ${wins.length} / 敗 ${losses.length}</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-label">平均獲利</div>
+      <div class="sum-value col-green">${avgW !== '—' ? '+'+avgW+'%' : '—'}</div>
+      <div class="sum-sub">達標出場均值</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-label">平均虧損</div>
+      <div class="sum-value col-red">${avgL !== '—' ? avgL+'%' : '—'}</div>
+      <div class="sum-sub">停損出場均值</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-label">期望值</div>
+      <div class="sum-value ${parseFloat(evR)>0?'col-green':'col-red'}">${evR !== '—' ? evR+'R' : '—'}</div>
+      <div class="sum-sub">每筆平均賺 X 個風險單位</div>
+    </div>`;
+}
+
+function renderSectorGrid(signals) {
+  const map = {};
+  for (const s of signals) {
+    if (!map[s.sector]) map[s.sector] = { wins:0, losses:0, hold:0 };
+    if (s.exitReason === '達標 (2R)')  map[s.sector].wins++;
+    else if (s.exitReason === '停損出場') map[s.sector].losses++;
+    else map[s.sector].hold++;
+  }
+
+  const sorted = Object.entries(map).sort((a,b) => (b[1].wins+b[1].losses+b[1].hold) - (a[1].wins+a[1].losses+a[1].hold));
+
+  document.getElementById('sectorGrid').innerHTML = sorted.map(([sec, d]) => {
+    const total = d.wins + d.losses + d.hold;
+    const completed = d.wins + d.losses;
+    const wr = completed ? Math.round(d.wins / completed * 100) : null;
+    const wrStr = wr !== null ? wr + '%' : '—';
+    const cls = wr !== null ? (wr >= 50 ? 'col-green' : wr >= 33 ? 'col-yellow' : 'col-red') : 'col-blue';
+    return `
+    <div class="sector-card" style="cursor:pointer" onclick="setFilter('${sec}')">
+      <div>
+        <div class="sector-name">${sec}</div>
+        <div class="sector-meta">訊號 ${total} · 勝 ${d.wins} / 敗 ${d.losses} / 持有 ${d.hold}</div>
+      </div>
+      <div class="sector-wr ${cls}">${wrStr}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderFilterBar(signals) {
+  const sectors = [...new Set(signals.map(s => s.sector))].sort();
+  document.getElementById('filterBar').innerHTML =
+    `<span class="filter-tag active" onclick="setFilter('all')" id="f-all">全部</span>` +
+    sectors.map(sec =>
+      `<span class="filter-tag" onclick="setFilter('${sec}')" id="f-${sec.replace(/\s/g,'_')}">${sec}</span>`
+    ).join('');
+}
+
+function setFilter(sector) {
+  activeFilter = sector;
+  document.querySelectorAll('.filter-tag').forEach(el => el.classList.remove('active'));
+  const id = sector === 'all' ? 'f-all' : 'f-' + sector.replace(/\s/g,'_');
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+  const filtered = sector === 'all' ? allSignals : allSignals.filter(s => s.sector === sector);
+  renderTradeTable(filtered, sector);
+}
+
+function renderTradeTable(signals, filter) {
+  if (signals.length === 0) {
+    document.getElementById('tradeTable').innerHTML =
+      `<div class="empty"><div class="icon">🔍</div><div>此類股在過去30天沒有觸發進場訊號</div></div>`;
+    return;
+  }
+
+  const rows = signals.map(s => {
+    const isWin  = s.exitReason === '達標 (2R)';
+    const isLoss = s.exitReason === '停損出場';
+    const rowCls = isWin ? 'win' : isLoss ? 'loss' : 'hold';
+    const tagCls = isWin ? 'tag-win' : isLoss ? 'tag-loss' : 'tag-hold';
+    const pnlStr  = s.pnlPct >= 0 ? `+${s.pnlPct.toFixed(1)}%` : `${s.pnlPct.toFixed(1)}%`;
+    const pnlCol  = s.pnlPct >= 0 ? 'col-green' : 'col-red';
+    const rStr    = s.rMult >= 0 ? `+${s.rMult.toFixed(2)}R` : `${s.rMult.toFixed(2)}R`;
+    const rCol    = s.rMult >= 0 ? 'col-green' : 'col-red';
+
+    return `<tr class="${rowCls}">
+      <td>${fmtDate(s.entryTs)}</td>
+      <td><a class="code-link" href="${tvUrl(s)}" target="_blank">${s.code}</a></td>
+      <td>${s.name}</td>
+      <td style="color:var(--muted)">${s.sector}</td>
+      <td class="mono">NT$${fmtPrice(s.entryPrice)}</td>
+      <td class="mono col-red">NT$${fmtPrice(s.stopLoss)}</td>
+      <td class="mono col-green">NT$${fmtPrice(s.takeProfit)}</td>
+      <td>${s.exitReason !== '持有中' ? fmtDate(s.exitTs) : '—'}</td>
+      <td class="mono">${s.exitReason !== '持有中' ? 'NT$'+fmtPrice(s.exitPrice) : '持有中'}</td>
+      <td><span class="tag ${tagCls}">${s.exitReason}</span></td>
+      <td class="mono ${pnlCol}">${pnlStr}</td>
+      <td class="mono ${rCol}">${rStr}</td>
+      <td style="color:var(--muted)">${s.daysHeld}天</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('tradeTable').innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>進場日</th><th>代號</th><th>名稱</th><th>類股</th>
+            <th>進場價</th><th>停損</th><th>目標(2R)</th>
+            <th>出場日</th><th>出場價</th><th>結果</th>
+            <th>損益%</th><th>R值</th><th>持有</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+</script>
+</body>
+</html>
