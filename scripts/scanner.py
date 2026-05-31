@@ -299,7 +299,7 @@ def build_message(entries, watches, total, errors, scan_time, date_str):
                 t for t, ok in [("Stage2",c["stage2"]),("TT",c["tt"]),("VCP",c["vcp"])] if ok
             )
             lines.append(f"\n▶ <b>{tv_link(s)}</b>（{s['sector']}）")
-            lines.append(f"   進場 NT${fmt_price(p)} ｜ 停損 NT${fmt_price(sl)} ｜ 目標 NT${fmt_price(tgt)}")
+            lines.append(f"   現價 NT${fmt_price(p)} ｜ 停損 NT${fmt_price(sl)} ｜ 目標 NT${fmt_price(tgt)}")
             if risk:
                 lines.append(f"   風險 {risk:.1f}% ｜ 成本/張 {fmt_money(p * SHARES)}")
             if pos:
@@ -320,7 +320,7 @@ def build_message(entries, watches, total, errors, scan_time, date_str):
             miss_str = "、".join(miss) if miss else "突破"
             lines.append(
                 f"▷ <b>{tv_link(s)}</b>（{s['sector']}）"
-                f"  缺{miss_str}  突破點 NT${fmt_price(c['pivot'])}"
+                f"  現價 NT${fmt_price(c['price'])}  缺{miss_str}  突破點 NT${fmt_price(c['pivot'])}"
             )
         if extra:
             lines.append(f"   ⋯ 另有 {extra} 支，詳見網頁版")
