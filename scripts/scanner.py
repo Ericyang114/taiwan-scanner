@@ -298,8 +298,12 @@ def build_message(entries, watches, total, errors, scan_time, date_str):
             cond_tags = " ".join(
                 t for t, ok in [("Stage2",c["stage2"]),("TT",c["tt"]),("VCP",c["vcp"])] if ok
             )
+            pivot     = c["pivot"]
+            max_chase = pivot * 1.03 if pivot else None  # 進場最高追價 +3%
             lines.append(f"\n▶ <b>{tv_link(s)}</b>（{s['sector']}）")
-            lines.append(f"   現價 NT${fmt_price(p)} ｜ 停損 NT${fmt_price(sl)} ｜ 目標 NT${fmt_price(tgt)}")
+            lines.append(f"   昨收 NT${fmt_price(p)}")
+            lines.append(f"   進場區間 NT${fmt_price(pivot)} ~ NT${fmt_price(max_chase)}（突破點 ~ 最高追+3%）")
+            lines.append(f"   停損 NT${fmt_price(sl)} ｜ 目標 NT${fmt_price(tgt)}")
             if risk:
                 lines.append(f"   風險 {risk:.1f}% ｜ 成本/張 {fmt_money(p * SHARES)}")
             if pos:
