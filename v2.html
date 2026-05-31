@@ -284,8 +284,8 @@ tr.s3 { background: rgba(210,153,34,.05); }
     <div><strong>Stage 2（Weinstein）</strong><br>收盤 > 30週均線，且均線向上。股票在多頭趨勢中段，不買下跌或盤整段。</div>
     <div><strong>TT 7/7（Minervini Trend Template）</strong><br>7 條件全過：收盤 > EMA50/150/200、EMA50&gt;EMA150&gt;EMA200、EMA200 向上、距52週高點25%內、高於52週低點25%以上。</div>
     <div><strong>VCP（波動收縮型態）</strong><br>ATR縮小25%+、量能萎縮20%+、靠近52週高點。籌碼換手完成，像彈簧壓縮準備爆發。</div>
-    <div><strong>突破 ★</strong><br>今日收盤突破近20根K棒高點，量能為50均量的1.4倍以上，突破幅度 ≤5%（避免追高）。</div>
-    <div><strong>進場區間</strong><br>「突破點」= 近20根高點（收盤突破這裡才算有效）<br>「最高追價」= 突破點 × 1.05，超過這個就不追了<br>次日開盤進場是常見做法。</div>
+    <div><strong>突破 ★（A方案進場條件）</strong><br>今日收盤突破近20根K棒高點，量能為50均量的 <strong>1.2倍</strong>以上，突破幅度 ≤5%（避免追高）。<br><br>「今日進場」Tab 顯示條件：<strong>突破必須觸發</strong>，且 Stage2 / TT / VCP 三項中至少兩項成立（score ≥ 3）。</div>
+    <div><strong>進場區間</strong><br>「突破點」= 近20根高點（收盤突破這裡才算有效）<br>「最高追價」= 突破點 × 1.05，超過這個就不追了<br>次日開盤進場是常見做法。<br><br>「觀察名單」= score ≥ 3 但尚未突破，等待量能放大那天進場。</div>
     <div><strong>建議部位（1% 規則）</strong><br><code>部位 = 資金 × 1% ÷ 風險%</code><br>範例：資金100萬，風險8% → 部位 = 100萬×1%÷8% = NT$12.5萬<br>停損風險色碼：綠≤8% / 黃8–15% / 紅>15%</div>
   </div>
 </details>
@@ -404,7 +404,7 @@ function calcConditions({ close, high, low, volume }) {
 
   const pivot  = wMax(high, 20, last - 1);
   const avgVol = get(vol50, last);
-  const brk    = !!(pivot && avgVol && c > pivot && v > avgVol * 1.4 && c <= pivot * 1.05);
+  const brk    = !!(pivot && avgVol && c > pivot && v > avgVol * 1.2 && c <= pivot * 1.05);
 
   const score   = [stage2, tt, vcp, brk].filter(Boolean).length;
   const sl      = wMin(low, 20, last);
@@ -482,7 +482,8 @@ function fmt(n, digits=1) { return n != null ? n.toFixed(digits) : '—'; }
 ═══════════════════════════════════════════════════════ */
 function renderEntry(results) {
   const capital = getCapital();
-  const entries = results.filter(r => !r.error && r.score === 4 && r.brk);
+  // A方案：突破必須 + score ≥ 3（Stage2/TT/VCP 至少兩個）
+  const entries = results.filter(r => !r.error && r.brk && r.score >= 3);
 
   const cnt = document.getElementById('cnt-entry');
   cnt.textContent = entries.length;
@@ -548,7 +549,8 @@ function renderEntry(results) {
    渲染：觀察名單 Tab（表格）
 ═══════════════════════════════════════════════════════ */
 function renderWatch(results) {
-  const watches = results.filter(r => !r.error && r.score === 3);
+  // 觀察名單：score ≥ 3 但還沒突破（等突破訊號）
+  const watches = results.filter(r => !r.error && !r.brk && r.score >= 3);
 
   const cnt = document.getElementById('cnt-watch');
   cnt.textContent = watches.length;
@@ -711,8 +713,8 @@ async function startScan() {
   const valid   = allResults.filter(r => !r.error);
   const nodata  = allResults.filter(r => r.error === '資料不足').length;
   const apierr  = allResults.filter(r => r.error && r.error !== '資料不足').length;
-  const entries = valid.filter(r => r.score === 4 && r.brk).length;
-  const watches = valid.filter(r => r.score === 3).length;
+  const entries = valid.filter(r => r.brk && r.score >= 3).length;
+  const watches = valid.filter(r => !r.brk && r.score >= 3).length;
 
   document.getElementById('statText').textContent =
     `今日進場 ${entries} 支 · 觀察 ${watches} 支 · 有效 ${valid.length} 支 · 無資料 ${nodata+apierr} 支`;
