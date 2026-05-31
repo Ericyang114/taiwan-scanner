@@ -1,0 +1,31 @@
+name: 台股每日掃描推播
+
+on:
+  schedule:
+    # 台灣時間 13:35（UTC+8），扣掉 8 小時 = UTC 05:35
+    # 週一到週五執行（台股交易日）
+    - cron: '35 5 * * 1-5'
+  workflow_dispatch:  # 允許手動觸發（測試用）
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 取得程式碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安裝套件
+        run: pip install requests numpy
+
+      - name: 執行掃描並推播
+        env:
+          TELEGRAM_TOKEN:   ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/scanner.py
