@@ -150,7 +150,7 @@ tr.hold { background: rgba(88,166,255,.04); }
 
 <header>
   <h1>60天回測報告</h1>
-  <p class="subtitle">熱門類股（半導體 / 電子 / 光電 / 生技 / 電機）· Minervini + Weinstein 動能策略</p>
+  <p class="subtitle">精選40支熱門股 · Minervini + Weinstein 動能策略 · 每次進場1張（1000股）</p>
   <p class="rules-line">
     進場：<span>量能突破 ✓（量 ≥ 1.2x 均量）+ score ≥ 3</span>
     停損：<span>近20根K棒最低點</span>
@@ -160,9 +160,9 @@ tr.hold { background: rgba(88,166,255,.04); }
   <div class="controls">
     <button id="runBtn" onclick="runBacktest()">▶ 開始回測</button>
     <div class="capital-wrap">
-      <label for="perTrade">每筆投入</label>
-      <input id="perTrade" type="number" value="10" min="1" max="9999" onchange="rerenderSummary()">
-      <span>萬元</span>
+      <label>每次進場</label>
+      <span style="color:var(--text);font-weight:700;padding:0 4px">1 張</span>
+      <span>＝ 1000 股</span>
     </div>
     <span class="meta" id="statText"></span>
     <span class="meta" id="updatedAt"></span>
@@ -212,15 +212,57 @@ tr.hold { background: rgba(88,166,255,.04); }
 <script src="stocks.js"></script>
 <script>
 /* ═══════════════════════════════════════════════════════
-   熱門類股篩選
+   精選熱門股清單（約40支，每次進場1張＝1000股）
 ═══════════════════════════════════════════════════════ */
-const HOT_SECTORS = new Set([
-  '半導體業','電腦週邊','光電業','通信網路','電子零組件',
-  '電子通路','資訊服務','其他電子','電機機械','電子工業',
-  '生技醫療','生技','電器電纜',
-]);
-
-const BT_STOCKS = STOCKS.filter(s => HOT_SECTORS.has(s.sector));
+const BT_STOCKS = [
+  // 半導體 / IC 設計
+  { code:'2330', name:'台積電',     ex:'TW',  sector:'半導體業' },
+  { code:'2303', name:'聯電',       ex:'TW',  sector:'半導體業' },
+  { code:'6488', name:'環球晶',     ex:'TWO', sector:'半導體業' },
+  { code:'3105', name:'穩懋',       ex:'TW',  sector:'半導體業' },
+  { code:'2454', name:'聯發科',     ex:'TW',  sector:'IC設計'   },
+  { code:'3034', name:'聯詠',       ex:'TW',  sector:'IC設計'   },
+  { code:'2379', name:'瑞昱',       ex:'TW',  sector:'IC設計'   },
+  { code:'3443', name:'創意',       ex:'TW',  sector:'IC設計'   },
+  { code:'3661', name:'世芯-KY',    ex:'TW',  sector:'IC設計'   },
+  { code:'5274', name:'信驊',       ex:'TWO', sector:'IC設計'   },
+  { code:'5269', name:'祥碩',       ex:'TWO', sector:'IC設計'   },
+  { code:'4966', name:'譜瑞-KY',    ex:'TWO', sector:'IC設計'   },
+  { code:'2344', name:'華邦電',     ex:'TW',  sector:'記憶體'   },
+  // AI / 伺服器
+  { code:'6669', name:'緯穎',       ex:'TW',  sector:'AI伺服器' },
+  { code:'2382', name:'廣達',       ex:'TW',  sector:'AI伺服器' },
+  { code:'3231', name:'緯創',       ex:'TW',  sector:'伺服器'   },
+  { code:'2317', name:'鴻海',       ex:'TW',  sector:'EMS'      },
+  { code:'2308', name:'台達電',     ex:'TW',  sector:'電源'     },
+  { code:'3533', name:'嘉澤',       ex:'TW',  sector:'連接器'   },
+  // 封測 / PCB / 被動元件
+  { code:'3711', name:'日月光投控', ex:'TW',  sector:'封測'     },
+  { code:'3037', name:'欣興',       ex:'TW',  sector:'PCB'      },
+  { code:'8046', name:'南電',       ex:'TWO', sector:'PCB'      },
+  { code:'6278', name:'台表科',     ex:'TW',  sector:'PCB'      },
+  { code:'2327', name:'國巨',       ex:'TW',  sector:'被動元件' },
+  // 科技硬體
+  { code:'3008', name:'大立光',     ex:'TW',  sector:'光學'     },
+  { code:'2357', name:'華碩',       ex:'TW',  sector:'電腦'     },
+  { code:'2376', name:'技嘉',       ex:'TW',  sector:'主機板'   },
+  { code:'2395', name:'研華',       ex:'TW',  sector:'工控'     },
+  { code:'2360', name:'致茂',       ex:'TW',  sector:'量測'     },
+  { code:'3714', name:'富采',       ex:'TWO', sector:'光電'     },
+  // 航運
+  { code:'2603', name:'長榮',       ex:'TW',  sector:'航運'     },
+  { code:'2618', name:'長榮航',     ex:'TW',  sector:'航空'     },
+  // 金融
+  { code:'2881', name:'富邦金',     ex:'TW',  sector:'金控'     },
+  { code:'2882', name:'國泰金',     ex:'TW',  sector:'金控'     },
+  { code:'2886', name:'兆豐金',     ex:'TW',  sector:'金控'     },
+  // 傳產 / 電信
+  { code:'1301', name:'台塑',       ex:'TW',  sector:'石化'     },
+  { code:'2002', name:'中鋼',       ex:'TW',  sector:'鋼鐵'     },
+  { code:'2412', name:'中華電',     ex:'TW',  sector:'電信'     },
+  { code:'6505', name:'台塑化',     ex:'TW',  sector:'石化'     },
+  { code:'6409', name:'旭隼',       ex:'TWO', sector:'網通'     },
+];
 
 /* ═══════════════════════════════════════════════════════
    數學工具（同 v2）
@@ -477,17 +519,13 @@ function fmtDate(ts) {
 function fmtPrice(p) { return p != null ? p.toFixed(1) : '—'; }
 function tvUrl(s) { return `https://www.tradingview.com/chart/?symbol=${s.ex==='TWO'?'TPEX':'TWSE'}:${s.code}`; }
 
-function getPerTrade() {
-  return (parseFloat(document.getElementById('perTrade').value) || 10) * 10000;
-}
-function fmtMoney(n) {
-  if (Math.abs(n) >= 1e8) return (n/1e8).toFixed(2) + '億';
-  if (Math.abs(n) >= 1e4) return (n/1e4).toFixed(1) + '萬';
-  return n.toFixed(0);
-}
+const SHARES = 1000; // 台灣一張 = 1000 股
 
-function rerenderSummary() {
-  if (allSignals.length > 0) renderSummary(allSignals);
+function fmtMoney(n) {
+  const abs = Math.abs(n);
+  if (abs >= 1e8) return (n/1e8).toFixed(2) + '億';
+  if (abs >= 1e4) return (n/1e4).toFixed(1) + '萬';
+  return Math.round(n).toLocaleString();
 }
 
 function renderSummary(signals) {
@@ -506,14 +544,13 @@ function renderSummary(signals) {
     evR = (wrNum * 2 - (1 - wrNum) * 1).toFixed(2);
   }
 
-  // 金額計算
-  const pt = getPerTrade();
-  const totalTxn   = signals.length * pt;                                         // 總交易金額
-  const holdingVal = holding.reduce((a,s) => a + pt * (1 + s.pnlPct/100), 0);    // 庫存市值
-  const holdingCost= holding.length * pt;                                          // 庫存成本
-  const realizedPnl= completed.reduce((a,s) => a + pt * s.pnlPct/100, 0);        // 已實現損益
-  const unrealPnl  = holdingVal - holdingCost;                                    // 未實現損益
-  const totalPnl   = realizedPnl + unrealPnl;                                     // 總損益
+  // 金額計算（每張 = 1000 股，成本 = 進場價 × 1000）
+  const totalTxn    = signals.reduce((a,s)  => a + s.entryPrice * SHARES, 0);
+  const holdingCost = holding.reduce((a,s)  => a + s.entryPrice * SHARES, 0);
+  const holdingVal  = holding.reduce((a,s)  => a + s.exitPrice  * SHARES, 0); // exitPrice = 最新收盤
+  const realizedPnl = completed.reduce((a,s)=> a + (s.exitPrice - s.entryPrice) * SHARES, 0);
+  const unrealPnl   = holdingVal - holdingCost;
+  const totalPnl    = realizedPnl + unrealPnl;
 
   const pnlCls = n => n >= 0 ? 'col-green' : 'col-red';
   const pnlStr = n => (n >= 0 ? '+' : '') + fmtMoney(n);
@@ -548,12 +585,12 @@ function renderSummary(signals) {
     <div class="sum-card">
       <div class="sum-label">總交易金額</div>
       <div class="sum-value col-blue">${fmtMoney(totalTxn)}</div>
-      <div class="sum-sub">${signals.length} 筆 × ${fmtMoney(pt)}</div>
+      <div class="sum-sub">${signals.length} 筆合計成本</div>
     </div>
     <div class="sum-card">
       <div class="sum-label">現有庫存市值</div>
       <div class="sum-value col-blue">${holding.length ? fmtMoney(holdingVal) : '—'}</div>
-      <div class="sum-sub">成本 ${holding.length ? fmtMoney(holdingCost) : '—'} · ${holding.length} 支持有中</div>
+      <div class="sum-sub">成本 ${holding.length ? fmtMoney(holdingCost) : '—'} · ${holding.length} 支</div>
     </div>
     <div class="sum-card">
       <div class="sum-label">已實現損益</div>
@@ -636,18 +673,24 @@ function renderTradeTable(signals, filter) {
     const rStr    = s.rMult >= 0 ? `+${s.rMult.toFixed(2)}R` : `${s.rMult.toFixed(2)}R`;
     const rCol    = s.rMult >= 0 ? 'col-green' : 'col-red';
 
+    const costNTD  = s.entryPrice * SHARES;
+    const pnlNTD   = (s.exitPrice - s.entryPrice) * SHARES;
+    const pnlNTDStr = (pnlNTD >= 0 ? '+' : '') + fmtMoney(pnlNTD);
+
     return `<tr class="${rowCls}">
       <td>${fmtDate(s.entryTs)}</td>
       <td><a class="code-link" href="${tvUrl(s)}" target="_blank">${s.code}</a></td>
       <td>${s.name}</td>
       <td style="color:var(--muted)">${s.sector}</td>
       <td class="mono">NT$${fmtPrice(s.entryPrice)}</td>
+      <td class="mono" style="color:var(--muted)">${fmtMoney(costNTD)}</td>
       <td class="mono col-red">NT$${fmtPrice(s.stopLoss)}</td>
       <td class="mono col-green">NT$${fmtPrice(s.takeProfit)}</td>
       <td>${s.exitReason !== '持有中' ? fmtDate(s.exitTs) : '—'}</td>
       <td class="mono">${s.exitReason !== '持有中' ? 'NT$'+fmtPrice(s.exitPrice) : '持有中'}</td>
       <td><span class="tag ${tagCls}">${s.exitReason}</span></td>
       <td class="mono ${pnlCol}">${pnlStr}</td>
+      <td class="mono ${pnlCol}">${pnlNTDStr}</td>
       <td class="mono ${rCol}">${rStr}</td>
       <td style="color:var(--muted)">${s.daysHeld}天</td>
     </tr>`;
@@ -659,9 +702,11 @@ function renderTradeTable(signals, filter) {
         <thead>
           <tr>
             <th>進場日</th><th>代號</th><th>名稱</th><th>類股</th>
-            <th>進場價</th><th>停損</th><th>目標(2R)</th>
+            <th>進場價</th><th title="進場價×1000股">成本(1張)</th>
+            <th>停損</th><th>目標(2R)</th>
             <th>出場日</th><th>出場價</th><th>結果</th>
-            <th>損益%</th><th>R值</th><th>持有</th>
+            <th>損益%</th><th title="(出場-進場)×1000股">損益金額</th>
+            <th>R值</th><th>持有</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
