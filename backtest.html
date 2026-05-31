@@ -410,7 +410,7 @@ function backtestStock(stock, data) {
     const takeProfit = entryPrice + 2 * risk;
 
     // 向前掃描：找到停損 / 目標 / 15日時間出場
-    const MAX_HOLD = 10; // 最多持有幾個交易日
+    const MAX_HOLD = 15; // 最多持有幾個交易日
     let exitPrice  = close[n - 1] ?? entryPrice;
     let exitTs     = timestamps[n - 1];
     let exitReason = '持有中';
