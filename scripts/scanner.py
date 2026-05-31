@@ -6,10 +6,16 @@
 """
 
 import os
+import sys
+import io
 import time
 import requests
 import numpy as np
 from datetime import datetime, timezone, timedelta
+
+# Windows 終端機 UTF-8 輸出
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 # ── 設定 ──────────────────────────────────────────────
 TELEGRAM_TOKEN   = os.environ["TELEGRAM_TOKEN"]
@@ -116,11 +122,15 @@ def get(arr, i):
 def true_range(highs, lows, closes):
     tr = []
     for i in range(len(closes)):
+        h, l, c = highs[i], lows[i], closes[i]
+        if h is None or l is None:
+            tr.append(None)
+            continue
         if i == 0 or closes[i - 1] is None:
-            tr.append(highs[i] - lows[i])
+            tr.append(h - l)
         else:
             pc = closes[i - 1]
-            tr.append(max(highs[i] - lows[i], abs(highs[i] - pc), abs(lows[i] - pc)))
+            tr.append(max(h - l, abs(h - pc), abs(l - pc)))
     return tr
 
 # ── 條件計算 ──────────────────────────────────────────
@@ -361,10 +371,10 @@ def main():
 
     # 發送 Telegram
     msg = build_message(entries, watches, scan_time)
-    print("\n發送 Telegram...")
-    print(msg)
     send_telegram(msg)
-    print("完成！")
+    print("\n=== Telegram 訊息 ===")
+    print(msg)
+    print("=== 完成！===")
 
 if __name__ == "__main__":
     main()
