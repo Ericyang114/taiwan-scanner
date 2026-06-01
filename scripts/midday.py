@@ -223,9 +223,14 @@ def build_message(results, scan_time):
     tz_tw = timezone(timedelta(hours=8))
     date_str = datetime.now(tz_tw).strftime('%Y/%m/%d')
 
+    # 動態計算距收盤時間
+    close_dt   = datetime.now(tz_tw).replace(hour=13, minute=30, second=0, microsecond=0)
+    remaining  = max(0, int((close_dt - datetime.now(tz_tw)).total_seconds() // 60))
+    remain_str = f'{remaining//60}小時{remaining%60}分' if remaining >= 60 else f'{remaining}分鐘'
+
     lines=[
         f'⚡ <b>盤中預警 {date_str} {scan_time}</b>',
-        f'距收盤還有約 1.5 小時，留意尾盤走勢\n',
+        f'距收盤還有 {remain_str}，留意走勢\n',
     ]
 
     lines.append(f'🟢 <b>今日已突破 {len(breakouts)} 支</b>（注意量能是否持續）')
