@@ -1,14 +1,9 @@
 name: 台股每日掃描推播
 
 on:
-  schedule:
-    # 台灣時間 13:35（UTC+8 = UTC 05:35）收盤掃描
-    - cron: '35 5 * * 1-5'
-    # 台灣時間 12:00（UTC+8 = UTC 04:00）盤中預警
-    - cron: '0 4 * * 1-5'
-    # 台灣時間 09:15（UTC+8 = UTC 01:15）早盤預警
-    - cron: '15 1 * * 1-5'
-  workflow_dispatch:  # 允許手動觸發（測試用）
+  # cron 排程已移至 cron-job.org（更準時可靠）
+  # 09:15 台灣 = UTC 01:15 / 12:00 台灣 = UTC 04:00 / 13:35 台灣 = UTC 05:35
+  workflow_dispatch:  # 由 cron-job.org 每天準時觸發
 
 jobs:
   scan:
