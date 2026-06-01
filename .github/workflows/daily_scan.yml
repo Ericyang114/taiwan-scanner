@@ -6,6 +6,8 @@ on:
     - cron: '35 5 * * 1-5'
     # 台灣時間 12:00（UTC+8 = UTC 04:00）盤中預警
     - cron: '0 4 * * 1-5'
+    # 台灣時間 09:15（UTC+8 = UTC 01:15）早盤預警
+    - cron: '15 1 * * 1-5'
   workflow_dispatch:  # 允許手動觸發（測試用）
 
 jobs:
@@ -31,7 +33,7 @@ jobs:
           HOUR=$(date -u +%H)
           MIN=$(date -u +%M)
           echo "UTC hour=$HOUR min=$MIN"
-          if [ "$HOUR" = "04" ]; then
+          if [ "$HOUR" = "04" ] || [ "$HOUR" = "01" ]; then
             echo "script=scripts/midday.py" >> $GITHUB_OUTPUT
           else
             echo "script=scripts/scanner.py" >> $GITHUB_OUTPUT
