@@ -2,9 +2,10 @@ name: 台股每日掃描推播
 
 on:
   schedule:
-    # 台灣時間 13:35（UTC+8），扣掉 8 小時 = UTC 05:35
-    # 週一到週五執行（台股交易日）
+    # 台灣時間 13:35（UTC+8 = UTC 05:35）收盤掃描
     - cron: '35 5 * * 1-5'
+    # 台灣時間 12:00（UTC+8 = UTC 04:00）盤中預警
+    - cron: '0 4 * * 1-5'
   workflow_dispatch:  # 允許手動觸發（測試用）
 
 jobs:
@@ -24,8 +25,20 @@ jobs:
       - name: 安裝套件
         run: pip install requests numpy
 
+      - name: 判斷執行哪個腳本
+        id: which
+        run: |
+          HOUR=$(date -u +%H)
+          MIN=$(date -u +%M)
+          echo "UTC hour=$HOUR min=$MIN"
+          if [ "$HOUR" = "04" ]; then
+            echo "script=scripts/midday.py" >> $GITHUB_OUTPUT
+          else
+            echo "script=scripts/scanner.py" >> $GITHUB_OUTPUT
+          fi
+
       - name: 執行掃描並推播
         env:
           TELEGRAM_TOKEN:   ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python scripts/scanner.py
+        run: python ${{ steps.which.outputs.script }}
