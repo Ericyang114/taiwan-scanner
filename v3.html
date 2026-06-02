@@ -467,6 +467,10 @@ function renderEntry(results, marketStage) {
     const rsStr=r.rs!=null?(r.rs>=0?`+${r.rs}%`:`${r.rs}%`):null;
     const rsCls=r.rs!=null?(r.rs>=0?'rs-pos':'rs-neg'):'';
 
+    // 判斷現價是否超出進場區間
+    const aboveChase = maxChase && p > maxChase;
+    const chaseOver  = aboveChase ? ((p/pivot-1)*100).toFixed(1) : null;
+
     const ttHtml=TT_LABELS.map((lab,i)=>`<span class="tt-item ${r.ttArr[i]?'pass':'fail'}"><span style="color:${r.ttArr[i]?'var(--green)':'var(--border)'}">●</span>${lab}</span>`).join('');
 
     return`<div class="entry-card ${cardCls}">
@@ -480,14 +484,18 @@ function renderEntry(results, marketStage) {
   </div>
   <div class="card-stats">
     <div class="stat-box">
-      <div class="stat-label">昨收（進場參考）</div>
-      <div class="stat-value">NT$${fmt(p)}</div>
+      <div class="stat-label">現價（最新收盤）</div>
+      <div class="stat-value"${aboveChase?' style="color:var(--yellow)"':''}>NT$${fmt(p)}</div>
       <div class="stat-sub">TT ${r.ttScore}/7 · ${r.stage2?'Stage2✓':'Stage2✗'}</div>
     </div>
     <div class="stat-box">
       <div class="stat-label">進場區間</div>
-      <div class="stat-value" style="font-size:12px">NT$${fmt(pivot)} ~ ${fmt(maxChase)}</div>
-      <div class="stat-sub">突破點 ~ 最高追+3% · ${r.breakoutDays===0?'<b style="color:var(--green)">今日突破</b>':`${r.breakoutDays}天前突破`}</div>
+      ${aboveChase
+        ?`<div class="stat-value" style="font-size:12px;color:var(--yellow)">⚠️ 已超出 +${chaseOver}%</div>
+           <div class="stat-sub" style="color:var(--yellow)">突破點 NT$${fmt(pivot)}，現價超過最高追價，不宜追</div>`
+        :`<div class="stat-value" style="font-size:12px">NT$${fmt(pivot)} ~ ${fmt(maxChase)}</div>
+           <div class="stat-sub">突破點 ~ 最高追+3% · ${r.breakoutDays===0?'<b style="color:var(--green)">今日突破</b>':`${r.breakoutDays}天前突破`}</div>`
+      }
     </div>
     <div class="stat-box">
       <div class="stat-label">建議停損</div>
