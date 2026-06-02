@@ -297,8 +297,20 @@ function calcConditions({close,high,low,volume}, twiiClose) {
   // 量能等級
   const volTier=volRatio>=1.5?2:volRatio>=1.2?1:0;
 
-  // 停損：突破點 × 97%
-  const sl=pivot?pivot*.97:wmin(low,20,last);
+  // 停損：找突破那天的低點（往前最多 10 根找 close 首次突破 pivot 的那根）
+  // 若找不到就退回 pivot × 97%
+  let sl=pivot?pivot*.97:wmin(low,20,last);
+  let breakoutDays=0;  // 突破幾天了
+  if(pivot){
+    for(let j=last;j>=Math.max(0,last-10);j--){
+      if(close[j]!=null&&close[j]>pivot){
+        sl=Math.min(low[j]??pivot*.97, pivot*.97); // 突破日低點（至少不低過 pivot-3%）
+        breakoutDays=last-j;                        // 今天是第幾天
+      } else {
+        break; // 找到進入突破前的位置
+      }
+    }
+  }
   const riskPct=sl?(c-sl)/c*100:null;
   const score=[stage2,tt,vcp,brk].filter(Boolean).length;
 
@@ -311,7 +323,7 @@ function calcConditions({close,high,low,volume}, twiiClose) {
     rs=parseFloat((sRet-tRet).toFixed(1));
   }
 
-  return {price:c,stage2,tt,ttScore,ttArr:m,vcp,brk,pivot,score,riskPct,stopLoss:sl,rs,volRatio,volTier};
+  return {price:c,stage2,tt,ttScore,ttArr:m,vcp,brk,pivot,score,riskPct,stopLoss:sl,rs,volRatio,volTier,breakoutDays};
 }
 
 /* ══ 大盤狀態（TWII）══════════════════════════════════ */
@@ -426,7 +438,7 @@ function renderEntry(results, marketStage) {
     ${sectorBadge(r.sector)}
     <span class="vol-stars" title="量能等級">${volStars(r.volTier)}</span>
     ${rsStr?`<span class="rs-badge ${rsCls}" title="RS vs 大盤">RS ${rsStr}</span>`:''}
-    <span class="badge-brk">突破 ★</span>
+    <span class="badge-brk">${r.breakoutDays===0?'今日突破 🔥':`突破 ${r.breakoutDays}天前`}</span>
   </div>
   <div class="card-stats">
     <div class="stat-box">
@@ -437,12 +449,12 @@ function renderEntry(results, marketStage) {
     <div class="stat-box">
       <div class="stat-label">進場區間</div>
       <div class="stat-value" style="font-size:12px">NT$${fmt(pivot)} ~ ${fmt(maxChase)}</div>
-      <div class="stat-sub">突破點 ~ 最高追價(+3%)</div>
+      <div class="stat-sub">突破點 ~ 最高追+3% · ${r.breakoutDays===0?'<b style="color:var(--green)">今日突破</b>':`${r.breakoutDays}天前突破`}</div>
     </div>
     <div class="stat-box">
       <div class="stat-label">建議停損</div>
       <div class="stat-value ${rc}">NT$${fmt(sl)}</div>
-      <div class="stat-sub ${rc}">${risk?risk.toFixed(1)+'% 風險':''}</div>
+      <div class="stat-sub ${rc}">${risk?risk.toFixed(1)+'% 風險':''} · 突破日低點</div>
     </div>
     <div class="stat-box highlight">
       <div class="stat-label">建議部位（1%規則）</div>
