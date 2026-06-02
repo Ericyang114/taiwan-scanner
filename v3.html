@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台股動能掃描器 v3 | Minervini + Weinstein</title>
+<style>
+:root {
+  --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--border:#30363d;
+  --text:#e6edf3;--muted:#8b949e;
+  --green:#3fb950;--yellow:#d29922;--orange:#d18616;--red:#f85149;--blue:#58a6ff;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;font-size:14px;}
+.container{max-width:1300px;margin:0 auto;padding:24px 16px;}
+
+/* ── Nav ── */
+.nav{margin-bottom:20px;display:flex;gap:12px;font-size:12px;}
+.nav a{color:var(--muted);text-decoration:none;}.nav a:hover{color:var(--text);}
+.nav span{color:var(--border);}
+
+/* ── Header ── */
+h1{font-size:22px;font-weight:700;margin-bottom:4px;}
+.subtitle{color:var(--muted);font-size:13px;margin-bottom:16px;}
+.controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;}
+#scanBtn{background:var(--green);color:#000;border:none;padding:8px 22px;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;transition:opacity .15s;}
+#scanBtn:hover{opacity:.85;}#scanBtn:disabled{opacity:.45;cursor:not-allowed;}
+.capital-wrap{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 12px;}
+.capital-wrap label{color:var(--muted);font-size:13px;}
+#capital{background:transparent;border:none;outline:none;color:var(--text);font-size:14px;font-weight:700;width:70px;text-align:right;}
+.capital-wrap span{color:var(--muted);font-size:13px;}
+.meta{color:var(--muted);font-size:12px;}
+
+/* ── Market Status ── */
+.market-bar{
+  display:flex;align-items:center;gap:16px;
+  padding:12px 16px;border-radius:8px;margin-bottom:16px;
+  border:1px solid var(--border);background:var(--bg2);
+  font-size:13px;
+}
+.market-bar .label{color:var(--muted);font-size:12px;margin-right:4px;}
+.market-stage{font-weight:700;padding:3px 10px;border-radius:12px;font-size:12px;}
+.stage-2{background:rgba(63,185,80,.2);color:var(--green);}
+.stage-3{background:rgba(210,153,34,.2);color:var(--yellow);}
+.stage-4{background:rgba(248,81,73,.15);color:var(--red);}
+.market-warning{color:var(--yellow);font-size:12px;}
+
+/* ── Progress ── */
+.progress-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:16px;}
+.progress-track{background:var(--bg3);border-radius:4px;height:5px;overflow:hidden;margin-bottom:7px;}
+.progress-fill{background:var(--blue);height:100%;border-radius:4px;transition:width .2s;width:0%;}
+.progress-label{color:var(--muted);font-size:12px;}
+
+/* ── Tabs ── */
+.tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border);}
+.tab-btn{background:none;border:none;border-bottom:2px solid transparent;padding:8px 16px;color:var(--muted);font-size:13px;font-weight:500;cursor:pointer;margin-bottom:-1px;}
+.tab-btn:hover{color:var(--text);}
+.tab-btn.active{color:var(--text);border-bottom-color:var(--blue);}
+.tab-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:18px;padding:0 6px;border-radius:10px;font-size:11px;font-weight:700;background:var(--bg3);margin-left:6px;}
+.tab-count.has-data{background:var(--green);color:#000;}
+.tab-count.has-watch{background:var(--yellow);color:#000;}
+.tab-panel{display:none;}.tab-panel.active{display:block;}
+
+/* ── Entry Cards ── */
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px;}
+.entry-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.entry-card.hot{border-color:rgba(63,185,80,.5);}
+.entry-card.warm{border-color:rgba(88,166,255,.4);}
+.card-header{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);}
+.card-code{color:var(--blue);font-weight:700;font-size:15px;text-decoration:none;}
+.card-code:hover{text-decoration:underline;}
+.card-name{font-weight:600;}
+.card-sector{color:var(--muted);font-size:11px;flex:1;}
+.sector-hot{color:var(--green);font-size:11px;font-weight:600;}
+.vol-stars{font-size:13px;letter-spacing:-1px;}
+.badge-brk{background:rgba(63,185,80,.2);color:var(--green);border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;}
+.rs-badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;}
+.rs-pos{background:rgba(63,185,80,.15);color:var(--green);}
+.rs-neg{background:rgba(248,81,73,.12);color:var(--red);}
+
+.card-stats{display:grid;grid-template-columns:1fr 1fr;gap:0;}
+.stat-box{padding:10px 14px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);}
+.stat-box:nth-child(even){border-right:none;}
+.stat-box:nth-last-child(-n+2){border-bottom:none;}
+.stat-label{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;}
+.stat-value{font-size:15px;font-weight:700;font-family:monospace;}
+.stat-sub{color:var(--muted);font-size:10px;margin-top:2px;}
+.stat-box.highlight{background:rgba(63,185,80,.05);}
+.stat-box.highlight .stat-value{color:var(--green);}
+
+/* ── TT Conditions ── */
+.tt-grid{display:flex;flex-wrap:wrap;gap:3px;padding:8px 14px;border-top:1px solid var(--border);}
+.tt-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:2px;}
+.tt-item{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:3px;}
+.tt-item.pass{color:var(--green);}
+.tt-item.fail{color:var(--border);}
+
+.card-footer{padding:10px 14px;border-top:1px solid var(--border);}
+.btn-tv{display:block;text-align:center;text-decoration:none;background:var(--bg3);color:var(--blue);border-radius:6px;padding:7px 12px;font-size:12px;font-weight:600;transition:background .15s;}
+.btn-tv:hover{background:var(--border);}
+
+/* ── Watch Table ── */
+.watch-note{background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.3);border-radius:8px;padding:10px 14px;margin-bottom:14px;color:var(--yellow);font-size:12px;}
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+thead{background:var(--bg2);}
+th{padding:9px 10px;text-align:left;color:var(--muted);font-weight:500;white-space:nowrap;border-bottom:1px solid var(--border);}
+td{padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap;}
+tr:last-child td{border-bottom:none;}
+tr.s4{background:rgba(63,185,80,.06);}tr.s3{background:rgba(210,153,34,.05);}
+
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;}
+.b4{background:rgba(63,185,80,.18);color:var(--green);}
+.b3{background:rgba(210,153,34,.18);color:var(--yellow);}
+.b2{background:rgba(209,134,22,.18);color:var(--orange);}
+.b1{background:rgba(248,81,73,.12);color:var(--red);}
+.b0{background:var(--bg3);color:var(--muted);}
+
+.ok{color:var(--green);}.no{color:var(--border);}.star{color:var(--yellow);font-size:15px;}
+.mono{font-family:monospace;}
+.code-link{color:var(--blue);text-decoration:none;font-weight:700;}.code-link:hover{text-decoration:underline;}
+.risk-ok{color:var(--green);}.risk-warn{color:var(--yellow);}.risk-bad{color:var(--red);}
+.missing-tag{display:inline-block;background:rgba(248,81,73,.1);color:var(--red);border-radius:4px;padding:1px 6px;font-size:11px;font-weight:600;}
+.alert-price{font-family:monospace;color:var(--yellow);font-weight:700;}
+
+/* ── Info ── */
+.info-box{margin-top:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.info-box summary{padding:10px 14px;cursor:pointer;color:var(--muted);font-size:12px;background:var(--bg2);user-select:none;}
+.info-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;padding:14px;font-size:12px;line-height:1.6;color:var(--muted);}
+.info-grid strong{color:var(--text);display:block;margin-bottom:3px;}
+
+/* ── Empty ── */
+.empty{text-align:center;padding:56px 16px;color:var(--muted);}
+.empty .icon{font-size:40px;margin-bottom:10px;}
+
+@media(max-width:640px){
+  h1{font-size:18px;}
+  .cards-grid{grid-template-columns:1fr;}
+  td,th{padding:6px 8px;font-size:11px;}
+  .info-grid{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="nav">
+  <a href="index.html">← 舊版</a><span>|</span>
+  <a href="v2.html">v2</a><span>|</span>
+  <a href="backtest.html">回測</a>
+</div>
+
+<header>
+  <h1>台股動能掃描器 <span style="color:var(--blue);font-size:14px">v3</span></h1>
+  <p class="subtitle">大盤過濾 · 相對強弱 · 量能分級 · 類股偏好 · Minervini + Weinstein</p>
+  <div class="controls">
+    <button id="scanBtn" onclick="startScan()">▶ 開始掃描</button>
+    <div class="capital-wrap">
+      <label for="capital">資金</label>
+      <input id="capital" type="number" value="100" min="1">
+      <span>萬元</span>
+    </div>
+    <span class="meta" id="statText"></span>
+    <span class="meta" id="updatedAt"></span>
+  </div>
+</header>
+
+<!-- 大盤狀態 -->
+<div id="marketBar" class="market-bar" style="display:none"></div>
+
+<!-- Progress -->
+<div id="progressWrap" class="progress-wrap" style="display:none">
+  <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="progress-label" id="progressLabel">準備中...</div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <button class="tab-btn active" data-tab="entry" onclick="switchTab('entry')">
+    🟢 今日進場 <span class="tab-count" id="cnt-entry">0</span>
+  </button>
+  <button class="tab-btn" data-tab="watch" onclick="switchTab('watch')">
+    🟡 觀察名單 <span class="tab-count" id="cnt-watch">0</span>
+  </button>
+  <button class="tab-btn" data-tab="all" onclick="switchTab('all')">
+    完整清單 <span class="tab-count" id="cnt-all">0</span>
+  </button>
+</div>
+
+<div id="tab-entry" class="tab-panel active">
+  <div class="empty"><div class="icon">📊</div><div>點擊「開始掃描」取得今日動能訊號</div></div>
+</div>
+<div id="tab-watch" class="tab-panel">
+  <div class="empty"><div class="icon">👀</div><div>掃描後顯示觀察名單</div></div>
+</div>
+<div id="tab-all" class="tab-panel">
+  <div class="empty"><div class="icon">📋</div><div>掃描後顯示完整清單</div></div>
+</div>
+
+<details class="info-box">
+  <summary>▸ v3 新增功能說明（點開）</summary>
+  <div class="info-grid">
+    <div><strong>大盤過濾（Weinstein）</strong>先判斷台灣加權指數是否在 Stage 2（收盤>30週均線且均線向上）。大盤 Stage 4 時所有突破成功率大幅下降，建議觀望或減碼。</div>
+    <div><strong>相對強弱（Minervini RS）</strong>計算個股過去 3 個月漲幅 vs 大盤漲幅。只顯示「跑贏大盤」的股票（RS > 0）。跑輸大盤的股票即使型態好也不優先考慮。</div>
+    <div><strong>量能分級</strong>突破時成交量倍率：⭐⭐ ≥ 1.5x（強力突破，機構積極介入）/ ⭐ 1.2–1.5x（普通突破，需觀察持續性）。</div>
+    <div><strong>TT 7 條件明細</strong>每張進場卡片底部顯示 Minervini Trend Template 哪幾條通過、哪幾條未過，讓你知道強度。</div>
+    <div><strong>擴大觀察名單</strong>v2 只看 TT 7/7，v3 的觀察名單包含 TT 6+/7（差一條的也納入），讓你不錯過潛力股。</div>
+    <div><strong>偏好類股標示</strong>半導體、IC設計、AI伺服器、光電、生技等成長型類股加 🔥 標示優先關注，傳產金融類股不特別突出。</div>
+  </div>
+</details>
+
+</div>
+<script src="stocks.js"></script>
+<script>
+/* ══ 設定 ══════════════════════════════════════════════ */
+const HOT_SECTORS = new Set([
+  '半導體業','IC設計','記憶體','化合物半導體',
+  'AI伺服器','伺服器','EMS','電源','連接器',
+  '封測','PCB','光電業','通信網路','電子零組件',
+  '電子通路','資訊服務','其他電子','電機機械','電腦週邊',
+  '生技醫療','生技','光學','工控','量測','被動元件','主機板','電腦',
+]);
+
+const TT_LABELS = ['收盤>MA150&200','MA150>200','MA200向上','MA50>MA150&200','收盤>MA50','距52W高點<25%','高於52W低30%'];
+
+/* ══ 數學工具（同 v2）══════════════════════════════════ */
+function ema(arr, period) {
+  const res=[],k=2/(period+1); let s=0,c=0,si=-1,prev;
+  for(let i=0;i<arr.length;i++){const v=arr[i];if(v!=null&&!isNaN(v)){s+=v;c++;if(c===period){si=i;break;}}}
+  if(si===-1)return new Array(arr.length).fill(null);
+  prev=s/period;
+  const r=new Array(arr.length).fill(null);r[si]=prev;
+  for(let i=si+1;i<arr.length;i++){const v=arr[i];if(v==null||isNaN(v)){r[i]=prev;}else{prev=v*k+prev*(1-k);r[i]=prev;}}
+  return r;
+}
+function sma(arr, period) {
+  return arr.map((_,i)=>{
+    if(i<period-1)return null;
+    const sl=arr.slice(i-period+1,i+1).filter(v=>v!=null&&!isNaN(v));
+    return sl.length>=Math.floor(period*.8)?sl.reduce((a,b)=>a+b,0)/sl.length:null;
+  });
+}
+function trueRange(H,L,C){
+  return C.map((_,i)=>{
+    const h=H[i],l=L[i];
+    if(h==null||l==null)return null;
+    if(i===0||C[i-1]==null)return h-l;
+    const pc=C[i-1];return Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc));
+  });
+}
+function wmax(arr,n,end){const sl=arr.slice(Math.max(0,end-n+1),end+1).filter(v=>v!=null);return sl.length?Math.max(...sl):null;}
+function wmin(arr,n,end){const sl=arr.slice(Math.max(0,end-n+1),end+1).filter(v=>v!=null);return sl.length?Math.min(...sl):null;}
+function wmean(arr,n,end){const sl=arr.slice(Math.max(0,end-n+1),end+1).filter(v=>v!=null&&!isNaN(v));return sl.length?sl.reduce((a,b)=>a+b,0)/sl.length:null;}
+function get(arr,i){i=Math.max(0,i);return arr[i]!=null?arr[i]:null;}
+
+/* ══ 條件計算（v3 新增 RS / 量能分級 / TT明細）═══════ */
+function calcConditions({close,high,low,volume}, twiiClose) {
+  const n=close.length;
+  if(n<252)return null;
+  let last=n-1;
+  while(last>0&&(close[last]==null||isNaN(close[last])))last--;
+  if(last<251)return null;
+  const c=close[last],v=volume[last];
+  if(!c||!v)return null;
+
+  const ma50=ema(close,50),ma150=ema(close,150),ma200=ema(close,200);
+  const ma30w=sma(close,150),vol50=sma(volume,50);
+  if(!get(ma50,last)||!get(ma150,last)||!get(ma200,last)||!get(ma30w,last))return null;
+
+  const h52=wmax(high,252,last),l52=wmin(low,252,last);
+  const stage2=c>get(ma30w,last)&&get(ma30w,last)>get(ma30w,last-4);
+
+  // Minervini TT 7 條件
+  const m=[
+    c>get(ma150,last)&&c>get(ma200,last),
+    get(ma150,last)>get(ma200,last),
+    last>=20?get(ma200,last)>get(ma200,last-20):false,
+    get(ma50,last)>get(ma150,last)&&get(ma50,last)>get(ma200,last),
+    c>get(ma50,last),
+    h52?c>=h52*.75:false,
+    l52?c>=l52*1.25:false,
+  ];
+  const ttScore=m.filter(Boolean).length,tt=ttScore===7;
+
+  // VCP
+  const atrArr=sma(trueRange(high,low,close),14);
+  const atrNow=wmean(atrArr,10,last),atrPrev=wmean(atrArr,10,last-10);
+  const volNow=wmean(volume,10,last),volPrev=wmean(volume,10,last-10);
+  const vcp=!!(atrNow&&atrPrev&&volNow&&volPrev&&h52
+    &&atrNow<atrPrev*.75&&volNow<volPrev*.80&&c>=h52*.70);
+
+  // 突破
+  const pivot=wmax(high,20,last-1),avgVol=get(vol50,last);
+  const volRatio=avgVol?v/avgVol:null;
+  const brk=!!(pivot&&avgVol&&c>pivot&&volRatio>=1.2&&c<=pivot*1.05);
+
+  // 量能等級
+  const volTier=volRatio>=1.5?2:volRatio>=1.2?1:0;
+
+  // 停損：突破點 × 97%
+  const sl=pivot?pivot*.97:wmin(low,20,last);
+  const riskPct=sl?(c-sl)/c*100:null;
+  const score=[stage2,tt,vcp,brk].filter(Boolean).length;
+
+  // ★ 相對強弱 vs 大盤（3 個月 ≈ 63 個交易日）
+  let rs=null;
+  if(twiiClose&&twiiClose.length>=64&&last>=63){
+    const sRet=(c-close[last-63])/close[last-63]*100;
+    const tn=twiiClose.length;
+    const tRet=(twiiClose[tn-1]-twiiClose[tn-64])/twiiClose[tn-64]*100;
+    rs=parseFloat((sRet-tRet).toFixed(1));
+  }
+
+  return {price:c,stage2,tt,ttScore,ttArr:m,vcp,brk,pivot,score,riskPct,stopLoss:sl,rs,volRatio,volTier};
+}
+
+/* ══ 大盤狀態（TWII）══════════════════════════════════ */
+function calcMarketStatus(twiiClose) {
+  if(!twiiClose||twiiClose.length<200)return{stage:0,label:'大盤資料不足',cls:'stage-3'};
+  const n=twiiClose.length,c=twiiClose[n-1];
+  const ma=sma(twiiClose,150);
+  const maV=get(ma,n-1),maPrev=get(ma,n-5);
+  if(!maV||!maPrev)return{stage:0,label:'計算中',cls:'stage-3'};
+  if(c>maV&&maV>maPrev)return{stage:2,label:'Stage 2 ✓ 多頭趨勢',cls:'stage-2'};
+  if(c<maV&&maV<maPrev)return{stage:4,label:'Stage 4 ✗ 空頭趨勢',cls:'stage-4'};
+  return{stage:3,label:'Stage 1/3 盤整中',cls:'stage-3'};
+}
+
+/* ══ 資料抓取 ══════════════════════════════════════════ */
+async function fetchOHLCV(stock, retries=2) {
+  const suffix=stock.ex==='TWO'?'.TWO':'.TW';
+  const sym=stock.isTWII?'%5ETWII':(stock.code+suffix);
+  const url=`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=2y`;
+  const proxies=[
+    `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+  ];
+  for(const pUrl of proxies){
+    const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),13000);
+    try{
+      const res=await fetch(pUrl,{signal:ctrl.signal});
+      clearTimeout(timer);if(!res.ok)continue;
+      let json=await res.json();
+      if(json.contents)json=JSON.parse(json.contents);
+      const r=json?.chart?.result?.[0];if(!r)continue;
+      const q=r.indicators.quote[0];
+      const fix=arr=>(arr||[]).map(v=>(v==null||isNaN(v))?null:v);
+      return{close:fix(q.close),high:fix(q.high),low:fix(q.low),volume:fix(q.volume)};
+    }catch(_){clearTimeout(timer);}
+  }
+  return null;
+}
+
+async function scanOne(stock, twiiClose) {
+  try{
+    const d=await fetchOHLCV(stock);
+    if(!d)return{...stock,error:'無資料'};
+    const cond=calcConditions(d,twiiClose);
+    return cond?{...stock,...cond}:{...stock,error:'資料不足'};
+  }catch(e){return{...stock,error:e.message};}
+}
+
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+/* ══ UI 工具 ════════════════════════════════════════════ */
+function switchTab(name){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+name));
+}
+function getCapital(){return(parseFloat(document.getElementById('capital').value)||100)*10000;}
+function riskCls(p){return p<=8?'risk-ok':p<=15?'risk-warn':'risk-bad';}
+function fmt(n,d=1){return n!=null?n.toFixed(d):'—';}
+function fmtMoney(n){if(Math.abs(n)>=1e8)return(n/1e8).toFixed(2)+'億';if(Math.abs(n)>=1e4)return(n/1e4).toFixed(1)+'萬';return Math.round(n).toLocaleString();}
+function tvUrl(s){return`https://www.tradingview.com/chart/?symbol=${s.ex==='TWO'?'TPEX':'TWSE'}:${s.code}`;}
+function volStars(tier){return tier>=2?'⭐⭐':tier===1?'⭐':'○';}
+function sectorBadge(sector){
+  if(HOT_SECTORS.has(sector))return`<span class="sector-hot">🔥 ${sector}</span>`;
+  return`<span class="card-sector">${sector}</span>`;
+}
+
+/* ══ 渲染：大盤狀態 ════════════════════════════════════ */
+function renderMarketBar(status) {
+  const bar=document.getElementById('marketBar');
+  bar.style.display='flex';
+  let warn='';
+  if(status.stage===4)warn=`<span class="market-warning">⚠️ 大盤空頭，個股突破成功率低，建議減碼或觀望</span>`;
+  if(status.stage===3)warn=`<span class="market-warning">⚠️ 大盤盤整，謹慎選擇，只做最強的突破</span>`;
+  bar.innerHTML=`
+    <span class="label">台灣加權指數</span>
+    <span class="market-stage ${status.cls}">${status.label}</span>
+    ${warn}`;
+}
+
+/* ══ 渲染：今日進場（卡片）════════════════════════════ */
+function renderEntry(results, marketStage) {
+  // A方案：突破 + score>=3 + RS>=0（跑贏或齊平大盤）
+  const entries=results.filter(r=>!r.error&&r.brk&&r.score>=3&&(r.rs==null||r.rs>=0));
+  const cnt=document.getElementById('cnt-entry');
+  cnt.textContent=entries.length;
+  cnt.className='tab-count'+(entries.length?' has-data':'');
+
+  if(!entries.length){
+    document.getElementById('tab-entry').innerHTML=`<div class="empty"><div class="icon">💤</div><div>今日無符合條件的進場訊號${marketStage===4?' （大盤空頭期間）':''}</div></div>`;
+    return;
+  }
+
+  const cap=getCapital();
+  const cards=entries.map(r=>{
+    const pivot=r.pivot,maxChase=pivot?pivot*1.03:null;
+    const sl=r.stopLoss,p=r.price;
+    const tgt=sl?(p+2*(p-sl)):null;
+    const risk=r.riskPct;
+    const pos=risk?cap*.01/(risk/100):null;
+    const rc=risk?riskCls(risk):'';
+    const isHot=HOT_SECTORS.has(r.sector);
+    const cardCls=r.volTier>=2?'hot':isHot?'warm':'';
+    const rsStr=r.rs!=null?(r.rs>=0?`+${r.rs}%`:`${r.rs}%`):null;
+    const rsCls=r.rs!=null?(r.rs>=0?'rs-pos':'rs-neg'):'';
+
+    const ttHtml=TT_LABELS.map((lab,i)=>`<span class="tt-item ${r.ttArr[i]?'pass':'fail'}"><span style="color:${r.ttArr[i]?'var(--green)':'var(--border)'}">●</span>${lab}</span>`).join('');
+
+    return`<div class="entry-card ${cardCls}">
+  <div class="card-header">
+    <a class="card-code" href="${tvUrl(r)}" target="_blank">${r.code}</a>
+    <span class="card-name">${r.name}</span>
+    ${sectorBadge(r.sector)}
+    <span class="vol-stars" title="量能等級">${volStars(r.volTier)}</span>
+    ${rsStr?`<span class="rs-badge ${rsCls}" title="RS vs 大盤">RS ${rsStr}</span>`:''}
+    <span class="badge-brk">突破 ★</span>
+  </div>
+  <div class="card-stats">
+    <div class="stat-box">
+      <div class="stat-label">昨收（進場參考）</div>
+      <div class="stat-value">NT$${fmt(p)}</div>
+      <div class="stat-sub">TT ${r.ttScore}/7 · ${r.stage2?'Stage2✓':'Stage2✗'}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">進場區間</div>
+      <div class="stat-value" style="font-size:12px">NT$${fmt(pivot)} ~ ${fmt(maxChase)}</div>
+      <div class="stat-sub">突破點 ~ 最高追價(+3%)</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">建議停損</div>
+      <div class="stat-value ${rc}">NT$${fmt(sl)}</div>
+      <div class="stat-sub ${rc}">${risk?risk.toFixed(1)+'% 風險':''}</div>
+    </div>
+    <div class="stat-box highlight">
+      <div class="stat-label">建議部位（1%規則）</div>
+      <div class="stat-value">${pos?fmtMoney(pos):'—'}</div>
+      <div class="stat-sub">${cap/10000}萬×1%÷${risk?risk.toFixed(1)+'%':''}</div>
+    </div>
+  </div>
+  <div class="tt-grid">${ttHtml}</div>
+  <div class="card-footer">
+    <a class="btn-tv" href="${tvUrl(r)}" target="_blank">📈 開啟 TradingView 確認圖形與量能</a>
+  </div>
+</div>`;
+  }).join('');
+
+  document.getElementById('tab-entry').innerHTML=`<div class="cards-grid">${cards}</div>`;
+}
+
+/* ══ 渲染：觀察名單（v3：TT 6+，擴大範圍）══════════ */
+function renderWatch(results) {
+  // 擴大到 TT 6/7 + score>=2 + 尚未突破
+  const watches=results.filter(r=>!r.error&&!r.brk&&r.score>=2&&r.ttScore>=6);
+  const cnt=document.getElementById('cnt-watch');
+  cnt.textContent=watches.length;
+  cnt.className='tab-count'+(watches.length?' has-watch':'');
+
+  if(!watches.length){
+    document.getElementById('tab-watch').innerHTML=`<div class="empty"><div class="icon">👀</div><div>無觀察標的</div></div>`;
+    return;
+  }
+
+  function missingTag(r){
+    const miss=[];
+    if(!r.stage2)miss.push('Stage2');
+    if(!r.tt)miss.push(`TT(${r.ttScore}/7)`);
+    if(!r.vcp)miss.push('VCP');
+    if(!r.brk)miss.push('突破');
+    return miss.map(m=>`<span class="missing-tag">${m}</span>`).join(' ');
+  }
+
+  const rows=watches.map(r=>{
+    const rsStr=r.rs!=null?(r.rs>=0?`<span class="risk-ok">+${r.rs}%</span>`:`<span class="risk-bad">${r.rs}%</span>`):'—';
+    const slCell=r.stopLoss?`<span class="mono ${riskCls(r.riskPct)}">NT$${fmt(r.stopLoss)}</span><br><small class="${riskCls(r.riskPct)}">${fmt(r.riskPct)}%</small>`:'—';
+    const cap=getCapital();
+    const pos=r.riskPct?cap*.01/(r.riskPct/100):null;
+    const isHot=HOT_SECTORS.has(r.sector);
+    return`<tr class="${r.score>=3?'s4':'s3'}">
+      <td><a class="code-link" href="${tvUrl(r)}" target="_blank">${r.code}</a></td>
+      <td>${r.name}${isHot?' 🔥':''}</td>
+      <td style="color:var(--muted)">${r.sector}</td>
+      <td class="mono">${fmt(r.price)}</td>
+      <td>${missingTag(r)}</td>
+      <td><span class="alert-price">NT$${fmt(r.pivot)}</span><br><small style="color:var(--muted)">在TV設警報</small></td>
+      <td>${rsStr}</td>
+      <td style="line-height:1.6">${slCell}</td>
+      <td class="${r.riskPct?riskCls(r.riskPct):''}">${pos?fmtMoney(pos):'—'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('tab-watch').innerHTML=`
+    <div class="watch-note">🟡 以下標的 TT 6+/7、score≥2，但尚未突破。在 TradingView 的「突破點」設警報，突破當日決定是否進場。🔥 = 偏好成長型類股。</div>
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>代號</th><th>名稱</th><th>類股</th><th>股價</th>
+        <th>缺少條件</th><th>突破點（設警報）</th>
+        <th title="3個月漲幅 vs 大盤">RS vs 大盤</th>
+        <th>建議停損</th><th>建議部位</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+/* ══ 渲染：完整清單 ════════════════════════════════════ */
+function chk(v){return v?'<span class="ok">✓</span>':'<span class="no">✗</span>';}
+function star(v){return v?'<span class="star">★</span>':'<span class="no">✗</span>';}
+function scoreBadge(s){const l={4:'突破買進',3:'接近就緒',2:'觀察中',1:'弱',0:'—'};return`<span class="badge b${s}">${s}/4 ${l[s]??''}</span>`;}
+
+function renderAll(results){
+  const valid=results.filter(r=>!r.error);
+  const errCnt=results.length-valid.length;
+  document.getElementById('cnt-all').textContent=valid.length;
+
+  const rows=valid.map(r=>{
+    const sc=r.score;
+    const ttD=r.tt?`<span class="ok">7/7</span>`:`<span style="color:var(--muted)">${r.ttScore}/7</span>`;
+    const slCell=r.stopLoss?`<span class="mono" style="font-size:11px">NT$${fmt(r.stopLoss)}</span><br><span class="${riskCls(r.riskPct)}" style="font-size:10px">(${fmt(r.riskPct)}%)</span>`:'—';
+    const rsStr=r.rs!=null?(r.rs>=0?`<span class="risk-ok">+${r.rs}%</span>`:`<span class="risk-bad">${r.rs}%</span>`):'—';
+    const isHot=HOT_SECTORS.has(r.sector);
+    return`<tr class="${sc>=4?'s4':sc>=3?'s3':''}">
+      <td><a class="code-link" href="${tvUrl(r)}" target="_blank">${r.code}</a></td>
+      <td>${r.name}${isHot?' 🔥':''}</td>
+      <td style="color:var(--muted)">${r.sector}</td>
+      <td class="mono">${fmt(r.price)}</td>
+      <td>${chk(r.stage2)}</td><td>${ttD}</td>
+      <td>${chk(r.vcp)}</td><td>${star(r.brk)}</td>
+      <td>${volStars(r.volTier)}</td>
+      <td>${rsStr}</td>
+      <td>${scoreBadge(sc)}</td>
+      <td style="line-height:1.6">${slCell}</td>
+    </tr>`;
+  }).join('');
+
+  const errNote=errCnt?`<div style="text-align:right;padding:8px 12px;font-size:11px;color:var(--muted)">另有 ${errCnt} 支無資料略過</div>`:'';
+  document.getElementById('tab-all').innerHTML=`
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>代號</th><th>名稱</th><th>類股</th><th>股價</th>
+        <th title="30週均線向上">Stage2</th>
+        <th title="Minervini 7條件">TT</th>
+        <th title="波動收縮型態">VCP</th>
+        <th title="量能突破">突破</th>
+        <th title="量能等級 ⭐⭐≥1.5x ⭐≥1.2x">量能</th>
+        <th title="3個月 vs 大盤">RS</th>
+        <th>分數</th>
+        <th title="突破點×97%停損">停損</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>${errNote}`;
+}
+
+/* ══ 主掃描流程 ════════════════════════════════════════ */
+let scanning=false;
+let allResults=[];
+
+async function startScan(){
+  if(scanning)return;
+  scanning=true;
+  const btn=document.getElementById('scanBtn');
+  btn.disabled=true;btn.textContent='⏳ 掃描中...';
+  document.getElementById('progressWrap').style.display='block';
+  document.getElementById('statText').textContent=`共 ${STOCKS.length} 支`;
+  document.getElementById('progressFill').style.width='0%';
+
+  // 1. 先抓大盤資料
+  document.getElementById('progressLabel').textContent='載入大盤（加權指數）資料...';
+  let twiiClose=null,marketStatus={stage:0,label:'大盤資料載入失敗',cls:'stage-3'};
+  try{
+    const twiiData=await fetchOHLCV({code:'^TWII',ex:'TW',isTWII:true});
+    if(twiiData){
+      twiiClose=twiiData.close;
+      marketStatus=calcMarketStatus(twiiClose);
+    }
+  }catch(_){}
+  renderMarketBar(marketStatus);
+
+  // 2. 掃描個股
+  allResults=[];
+  const BATCH=5;
+  for(let i=0;i<STOCKS.length;i+=BATCH){
+    const batch=STOCKS.slice(i,i+BATCH);
+    const partial=await Promise.all(batch.map(s=>scanOne(s,twiiClose)));
+    allResults.push(...partial);
+
+    const done=allResults.length,pct=Math.round(done/STOCKS.length*100);
+    document.getElementById('progressFill').style.width=pct+'%';
+    document.getElementById('progressLabel').textContent=`掃描中 ${done}/${STOCKS.length}（${pct}%）`;
+
+    const sorted=[...allResults].sort((a,b)=>(b.score??-1)-(a.score??-1));
+    renderEntry(sorted,marketStatus.stage);
+    renderWatch(sorted);
+    renderAll(sorted);
+
+    if(i+BATCH<STOCKS.length)await sleep(700);
+  }
+
+  document.getElementById('progressWrap').style.display='none';
+
+  const valid=allResults.filter(r=>!r.error);
+  const entries=valid.filter(r=>r.brk&&r.score>=3&&(r.rs==null||r.rs>=0)).length;
+  const watches=valid.filter(r=>!r.brk&&r.score>=2&&r.ttScore>=6).length;
+
+  document.getElementById('statText').textContent=
+    `今日進場 ${entries} 支 · 觀察 ${watches} 支 · 有效 ${valid.length} 支`;
+  const now=new Date();
+  document.getElementById('updatedAt').textContent=
+    `更新：${now.toLocaleDateString('zh-TW')} ${now.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}`;
+
+  btn.disabled=false;btn.textContent='▶ 重新掃描';
+  scanning=false;
+}
+</script>
+</body>
+</html>
