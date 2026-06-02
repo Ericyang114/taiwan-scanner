@@ -394,7 +394,13 @@ async function fetchOHLCV(stock, retries=2) {
       const r=json?.chart?.result?.[0];if(!r)continue;
       const q=r.indicators.quote[0];
       const fix=arr=>(arr||[]).map(v=>(v==null||isNaN(v))?null:v);
-      return{close:fix(q.close),high:fix(q.high),low:fix(q.low),volume:fix(q.volume)};
+      const timestamps=r.timestamp||[];
+      const lastTs=timestamps[timestamps.length-1];
+      // 檢查最後一根的日期（台灣時間 UTC+8）
+      const lastDate=lastTs?new Date((lastTs+8*3600)*1000).toISOString().slice(0,10):null;
+      const todayTW=new Date(Date.now()+8*3600000).toISOString().slice(0,10);
+      const isStale=lastDate&&lastDate<todayTW;
+      return{close:fix(q.close),high:fix(q.high),low:fix(q.low),volume:fix(q.volume),lastDate,isStale};
     }catch(_){clearTimeout(timer);}
   }
   return null;
@@ -405,7 +411,7 @@ async function scanOne(stock, twiiClose) {
     const d=await fetchOHLCV(stock);
     if(!d)return{...stock,error:'無資料'};
     const cond=calcConditions(d,twiiClose);
-    return cond?{...stock,...cond}:{...stock,error:'資料不足'};
+    return cond?{...stock,...cond,isStale:d.isStale,lastDate:d.lastDate}:{...stock,error:'資料不足'};
   }catch(e){return{...stock,error:e.message};}
 }
 
@@ -484,9 +490,9 @@ function renderEntry(results, marketStage) {
   </div>
   <div class="card-stats">
     <div class="stat-box">
-      <div class="stat-label">現價（最新收盤）</div>
-      <div class="stat-value"${aboveChase?' style="color:var(--yellow)"':''}>NT$${fmt(p)}</div>
-      <div class="stat-sub">TT ${r.ttScore}/7 · ${r.stage2?'Stage2✓':'Stage2✗'}</div>
+      <div class="stat-label">${r.isStale?`⚠️ 資料為 ${r.lastDate}`:'現價（最新收盤）'}</div>
+      <div class="stat-value"${(aboveChase||r.isStale)?' style="color:var(--yellow)"':''}>NT$${fmt(p)}</div>
+      <div class="stat-sub">${r.isStale?'<span style="color:var(--yellow)">proxy快取，非今日資料</span>':`TT ${r.ttScore}/7 · ${r.stage2?'Stage2✓':'Stage2✗'}`}</div>
     </div>
     <div class="stat-box">
       <div class="stat-label">進場區間</div>
@@ -671,8 +677,10 @@ async function startScan(){
   const entries=valid.filter(r=>r.hasBreakout&&r.score>=3&&(r.rs==null||r.rs>=0)).length;
   const watches=valid.filter(r=>!r.brk&&r.score>=2&&r.ttScore>=6).length;
 
+  const staleCount=valid.filter(r=>r.isStale).length;
+  const staleWarn=staleCount>valid.length*0.3?` ⚠️ ${staleCount}支資料非今日（proxy快取）`:'';
   document.getElementById('statText').textContent=
-    `今日進場 ${entries} 支 · 觀察 ${watches} 支 · 有效 ${valid.length} 支`;
+    `今日進場 ${entries} 支 · 觀察 ${watches} 支 · 有效 ${valid.length} 支${staleWarn}`;
   const now=new Date();
   document.getElementById('updatedAt').textContent=
     `更新：${now.toLocaleDateString('zh-TW')} ${now.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}`;
