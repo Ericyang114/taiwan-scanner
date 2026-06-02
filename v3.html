@@ -297,22 +297,54 @@ function calcConditions({close,high,low,volume}, twiiClose) {
   // 量能等級
   const volTier=volRatio>=1.5?2:volRatio>=1.2?1:0;
 
-  // 停損：找突破那天的低點（往前最多 10 根找 close 首次突破 pivot 的那根）
-  // 若找不到就退回 pivot × 97%
-  let sl=pivot?pivot*.97:wmin(low,20,last);
-  let breakoutDays=0;  // 突破幾天了
-  if(pivot){
-    for(let j=last;j>=Math.max(0,last-10);j--){
-      if(close[j]!=null&&close[j]>pivot){
-        sl=Math.min(low[j]??pivot*.97, pivot*.97); // 突破日低點（至少不低過 pivot-3%）
-        breakoutDays=last-j;                        // 今天是第幾天
-      } else {
-        break; // 找到進入突破前的位置
+  // ── 近期突破追溯（往前 1–5 根找有沒有符合突破條件的棒）──
+  // 因為昨天突破後今天的 pivot 已更新，brk 通常會是 false
+  // 但只要股價還在突破點上方，這筆交易仍然有效
+  let recentBreakout = null;  // { daysAgo, brkPivot, brkLow, brkVolRatio }
+  if (!brk && stage2 && tt) {
+    for (let d = 1; d <= 5; d++) {
+      const i = last - d;
+      if (i < 252) break;
+      const pastPivot  = wmax(high, 20, i - 1);
+      const pastAvgVol = get(vol50, i);
+      const pastVol    = volume[i];
+      const pastClose  = close[i];
+      if (!pastPivot || !pastAvgVol || !pastClose) continue;
+      const pastRatio  = pastVol / pastAvgVol;
+      const wasBreakout = pastClose > pastPivot
+                       && pastRatio >= 1.2
+                       && pastClose <= pastPivot * 1.05;
+      // 目前股價仍在突破點的 -5% 以內（未跌太深）
+      const stillValid = c >= pastPivot * 0.95;
+      if (wasBreakout && stillValid) {
+        recentBreakout = {
+          daysAgo:    d,
+          brkPivot:   pastPivot,
+          brkLow:     low[i],
+          brkVolRatio: pastRatio,
+        };
+        break;
       }
     }
   }
-  const riskPct=sl?(c-sl)/c*100:null;
-  const score=[stage2,tt,vcp,brk].filter(Boolean).length;
+
+  // ── 停損：突破日低點（今日或近期突破的 K 棒低點，最低不低於 pivot×97%）──
+  let sl = pivot ? pivot * 0.97 : wmin(low, 20, last);
+  let breakoutDays = 0;
+
+  if (brk) {
+    // 今日突破：用今天的低點
+    sl = Math.max(low[last] ?? pivot * 0.97, pivot * 0.97);
+    breakoutDays = 0;
+  } else if (recentBreakout) {
+    // 近期突破：用那天的低點
+    sl = Math.max(recentBreakout.brkLow ?? recentBreakout.brkPivot * 0.97,
+                  recentBreakout.brkPivot * 0.97);
+    breakoutDays = recentBreakout.daysAgo;
+  }
+
+  const riskPct = sl ? (c - sl) / c * 100 : null;
+  const score   = [stage2, tt, vcp, brk || !!recentBreakout].filter(Boolean).length;
 
   // ★ 相對強弱 vs 大盤（3 個月 ≈ 63 個交易日）
   let rs=null;
@@ -323,7 +355,12 @@ function calcConditions({close,high,low,volume}, twiiClose) {
     rs=parseFloat((sRet-tRet).toFixed(1));
   }
 
-  return {price:c,stage2,tt,ttScore,ttArr:m,vcp,brk,pivot,score,riskPct,stopLoss:sl,rs,volRatio,volTier,breakoutDays};
+  const hasBreakout = brk || !!recentBreakout;
+  const brkVolTier  = brk ? volTier
+                    : recentBreakout ? (recentBreakout.brkVolRatio>=1.5?2:1) : 0;
+
+  return {price:c,stage2,tt,ttScore,ttArr:m,vcp,brk,recentBreakout,hasBreakout,
+          pivot,score,riskPct,stopLoss:sl,rs,volRatio:volRatio??0,volTier:brkVolTier,breakoutDays};
 }
 
 /* ══ 大盤狀態（TWII）══════════════════════════════════ */
@@ -405,8 +442,9 @@ function renderMarketBar(status) {
 
 /* ══ 渲染：今日進場（卡片）════════════════════════════ */
 function renderEntry(results, marketStage) {
-  // A方案：突破 + score>=3 + RS>=0（跑贏或齊平大盤）
-  const entries=results.filter(r=>!r.error&&r.brk&&r.score>=3&&(r.rs==null||r.rs>=0));
+  // A方案：今日突破 或 近期突破（1-5天）+ score>=3 + RS>=0
+  const entries=results.filter(r=>!r.error&&r.hasBreakout&&r.score>=3&&(r.rs==null||r.rs>=0));
+  entries.sort((a,b)=>a.breakoutDays-b.breakoutDays||((b.score??0)-(a.score??0)));
   const cnt=document.getElementById('cnt-entry');
   cnt.textContent=entries.length;
   cnt.className='tab-count'+(entries.length?' has-data':'');
@@ -622,7 +660,7 @@ async function startScan(){
   document.getElementById('progressWrap').style.display='none';
 
   const valid=allResults.filter(r=>!r.error);
-  const entries=valid.filter(r=>r.brk&&r.score>=3&&(r.rs==null||r.rs>=0)).length;
+  const entries=valid.filter(r=>r.hasBreakout&&r.score>=3&&(r.rs==null||r.rs>=0)).length;
   const watches=valid.filter(r=>!r.brk&&r.score>=2&&r.ttScore>=6).length;
 
   document.getElementById('statText').textContent=
