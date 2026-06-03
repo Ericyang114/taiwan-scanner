@@ -151,7 +151,7 @@ tr.hold { background: rgba(88,166,255,.04); }
 
 <header>
   <h1>一年回測報告 <span style="color:var(--muted);font-size:14px">v1</span></h1>
-  <p class="subtitle">精選40支熱門股 · Minervini + Weinstein 動能策略 · 每次進場1張（1000股）</p>
+  <p class="subtitle">TWSE 全部上市普通股（1083支）· Minervini + Weinstein 動能策略 · 每次進場1張（1000股）</p>
   <p class="rules-line">
     進場：<span>突破 ✓ + score≥3</span>
     停損：<span>突破點 × 97%</span>
@@ -217,58 +217,8 @@ tr.hold { background: rgba(88,166,255,.04); }
 
 <script src="stocks.js"></script>
 <script>
-/* ═══════════════════════════════════════════════════════
-   精選熱門股清單（約40支，每次進場1張＝1000股）
-═══════════════════════════════════════════════════════ */
-const BT_STOCKS = [
-  // 半導體 / IC 設計
-  { code:'2330', name:'台積電',     ex:'TW',  sector:'半導體業' },
-  { code:'2303', name:'聯電',       ex:'TW',  sector:'半導體業' },
-  { code:'6488', name:'環球晶',     ex:'TWO', sector:'半導體業' },
-  { code:'3105', name:'穩懋',       ex:'TW',  sector:'半導體業' },
-  { code:'2454', name:'聯發科',     ex:'TW',  sector:'IC設計'   },
-  { code:'3034', name:'聯詠',       ex:'TW',  sector:'IC設計'   },
-  { code:'2379', name:'瑞昱',       ex:'TW',  sector:'IC設計'   },
-  { code:'3443', name:'創意',       ex:'TW',  sector:'IC設計'   },
-  { code:'3661', name:'世芯-KY',    ex:'TW',  sector:'IC設計'   },
-  { code:'5274', name:'信驊',       ex:'TWO', sector:'IC設計'   },
-  { code:'5269', name:'祥碩',       ex:'TWO', sector:'IC設計'   },
-  { code:'4966', name:'譜瑞-KY',    ex:'TWO', sector:'IC設計'   },
-  { code:'2344', name:'華邦電',     ex:'TW',  sector:'記憶體'   },
-  // AI / 伺服器
-  { code:'6669', name:'緯穎',       ex:'TW',  sector:'AI伺服器' },
-  { code:'2382', name:'廣達',       ex:'TW',  sector:'AI伺服器' },
-  { code:'3231', name:'緯創',       ex:'TW',  sector:'伺服器'   },
-  { code:'2317', name:'鴻海',       ex:'TW',  sector:'EMS'      },
-  { code:'2308', name:'台達電',     ex:'TW',  sector:'電源'     },
-  { code:'3533', name:'嘉澤',       ex:'TW',  sector:'連接器'   },
-  // 封測 / PCB / 被動元件
-  { code:'3711', name:'日月光投控', ex:'TW',  sector:'封測'     },
-  { code:'3037', name:'欣興',       ex:'TW',  sector:'PCB'      },
-  { code:'8046', name:'南電',       ex:'TWO', sector:'PCB'      },
-  { code:'6278', name:'台表科',     ex:'TW',  sector:'PCB'      },
-  { code:'2327', name:'國巨',       ex:'TW',  sector:'被動元件' },
-  // 科技硬體
-  { code:'3008', name:'大立光',     ex:'TW',  sector:'光學'     },
-  { code:'2357', name:'華碩',       ex:'TW',  sector:'電腦'     },
-  { code:'2376', name:'技嘉',       ex:'TW',  sector:'主機板'   },
-  { code:'2395', name:'研華',       ex:'TW',  sector:'工控'     },
-  { code:'2360', name:'致茂',       ex:'TW',  sector:'量測'     },
-  { code:'3714', name:'富采',       ex:'TWO', sector:'光電'     },
-  // 航運
-  { code:'2603', name:'長榮',       ex:'TW',  sector:'航運'     },
-  { code:'2618', name:'長榮航',     ex:'TW',  sector:'航空'     },
-  // 金融
-  { code:'2881', name:'富邦金',     ex:'TW',  sector:'金控'     },
-  { code:'2882', name:'國泰金',     ex:'TW',  sector:'金控'     },
-  { code:'2886', name:'兆豐金',     ex:'TW',  sector:'金控'     },
-  // 傳產 / 電信
-  { code:'1301', name:'台塑',       ex:'TW',  sector:'石化'     },
-  { code:'2002', name:'中鋼',       ex:'TW',  sector:'鋼鐵'     },
-  { code:'2412', name:'中華電',     ex:'TW',  sector:'電信'     },
-  { code:'6505', name:'台塑化',     ex:'TW',  sector:'石化'     },
-  { code:'6409', name:'旭隼',       ex:'TWO', sector:'網通'     },
-];
+// 使用 stocks.js 的完整 TWSE 上市股票清單（1083支）
+const BT_STOCKS = STOCKS;
 
 /* ═══════════════════════════════════════════════════════
    數學工具（同 v2）
