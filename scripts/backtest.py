@@ -192,20 +192,30 @@ def backtest_stock(stock, data):
 
         entry=close[i]; sl=cond['stop_loss']
         if not sl or sl>=entry: continue
-        risk=entry-sl; target=entry+2*risk
+        risk=entry-sl
 
+        # 移動停損（棘輪式）：不設固定 2R 目標，讓獲利繼續跑
         exit_price=close[n-1] if close[n-1] else entry
         exit_ts=ts[n-1]; exit_reason='持有中'
+        cur_stop=sl; max_r=0
 
         for j in range(i+1, n):
             if j-i>MAX_HOLD:
                 idx=j-1
                 exit_price=close[idx] if close[idx] else entry
                 exit_ts=ts[idx]; exit_reason=f'時間出場({MAX_HOLD}日)'; break
-            if low[j] is not None and low[j]<=sl:
-                exit_price=sl; exit_ts=ts[j]; exit_reason='停損出場'; break
-            if high[j] is not None and high[j]>=target:
-                exit_price=target; exit_ts=ts[j]; exit_reason='達標(2R)'; break
+            # 棘輪：更新動態停損
+            if high[j] is not None:
+                reached_r=int((high[j]-entry)/risk)
+                if reached_r>max_r:
+                    max_r=reached_r
+                    new_stop=entry+max(reached_r-1,0)*risk
+                    if new_stop>cur_stop: cur_stop=new_stop
+            # 動態停損觸發
+            if low[j] is not None and low[j]<=cur_stop:
+                exit_price=cur_stop; exit_ts=ts[j]
+                exit_reason='移動停損出場' if cur_stop>sl else '停損出場'
+                break
 
         pnl=(exit_price-entry); pnl_pct=pnl/entry*100; r_mult=pnl/risk
         days=round((exit_ts-ts[i])/86400)
@@ -213,7 +223,7 @@ def backtest_stock(stock, data):
         signals.append({
             'code':stock['code'],'name':stock['name'],'sector':stock['sector'],
             'entry_ts':ts[i],'exit_ts':exit_ts,
-            'entry':round(entry,1),'stop':round(sl,1),'target':round(target,1),
+            'entry':round(entry,1),'stop':round(cur_stop,1),'target':None,
             'exit':round(exit_price,1),'reason':exit_reason,
             'pnl_pct':round(pnl_pct,1),'r_mult':round(r_mult,2),'days':days,
             'score':cond['score'],'stage2':cond['stage2'],'tt':cond['tt'],'vcp':cond['vcp'],
