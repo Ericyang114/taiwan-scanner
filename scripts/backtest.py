@@ -131,15 +131,24 @@ def calc_conditions(close, high, low, volume):
              and atr_now<atr_prev*0.75 and vol_now<vol_prev*0.80 and c>=h52*0.70)
 
     pivot=wmax(high,20,last-1); avg_vol=get(vol50,last)
-    brk=bool(pivot and avg_vol and c>pivot and v>avg_vol*1.2 and c<=pivot*1.05)
+    vol_ratio = v/avg_vol if avg_vol else None
+    brk=bool(pivot and avg_vol and c>pivot and vol_ratio and vol_ratio>=1.2 and c<=pivot*1.05)
 
-    # 方案A：停損 = 突破點 × 97%
-    sl = pivot*0.97 if pivot else None
-    risk_pct=(c-sl)/c*100 if sl else None
+    # v3：停損 = 突破日低點（不低於 pivot×97%）
+    brk_day_low = low[last]
+    if pivot and brk_day_low is not None:
+        sl = max(brk_day_low, pivot*0.97)
+    elif pivot:
+        sl = pivot*0.97
+    else:
+        sl = None
+
+    risk_pct=(c-sl)/c*100 if sl and sl<c else None
+    vol_tier = 2 if (vol_ratio and vol_ratio>=1.5) else (1 if (vol_ratio and vol_ratio>=1.2) else 0)
     score=sum([stage2,tt,vcp,brk])
     return {'price':c,'stage2':stage2,'tt':tt,'tt_score':tt_score,
             'vcp':vcp,'brk':brk,'pivot':pivot,'score':score,
-            'risk_pct':risk_pct,'stop_loss':sl}
+            'risk_pct':risk_pct,'stop_loss':sl,'vol_tier':vol_tier}
 
 # ── 資料抓取 ─────────────────────────────────────────
 _UA_LIST = [
@@ -216,6 +225,7 @@ def backtest_stock(stock, data):
             'score':cond['score'],'stage2':cond['stage2'],'tt':cond['tt'],'vcp':cond['vcp'],
             'pivot':round(cond['pivot'],1) if cond['pivot'] else None,
             'risk_pct':round(cond['risk_pct'],1) if cond['risk_pct'] else None,
+            'vol_tier':cond.get('vol_tier',0),
         })
     return signals
 
@@ -421,13 +431,15 @@ function renderTradeTable(sigs){
     const rc2=s.r_mult>=0?'col-green':'col-red';
     const cost=s.entry*SHARES; const pnlNTD=(s.exit-s.entry)*SHARES;
     const pnlStr=(pnlNTD>=0?'+':'')+fmtMoney(pnlNTD);
+    const vols=s.vol_tier>=2?'⭐⭐':s.vol_tier===1?'⭐':'○';
     return `<tr class="${rc}">
       <td>${fmtDate(s.entry_ts)}</td>
       <td><a class="code-link" href="${tvUrl(s)}" target="_blank">${s.code}</a></td>
       <td>${s.name}</td><td style="color:var(--muted)">${s.sector}</td>
+      <td>${vols}</td>
       <td class="mono">NT$${fmtPrice(s.entry)}</td>
       <td class="mono" style="color:var(--muted)">${fmtMoney(cost)}</td>
-      <td class="mono col-red">NT$${fmtPrice(s.stop)}</td>
+      <td class="mono col-red">NT$${fmtPrice(s.stop)}<br><small style="color:var(--muted)">突破日低點</small></td>
       <td class="mono col-green">NT$${fmtPrice(s.target)}</td>
       <td>${s.reason!=='持有中'?fmtDate(s.exit_ts):'—'}</td>
       <td class="mono">${s.reason!=='持有中'?'NT$'+fmtPrice(s.exit):'持有中'}</td>
@@ -441,7 +453,7 @@ function renderTradeTable(sigs){
     <div class="table-wrap"><table>
       <thead><tr>
         <th>進場日</th><th>代號</th><th>名稱</th><th>類股</th>
-        <th>進場價</th><th>成本(1張)</th><th>停損</th><th>目標(2R)</th>
+        <th>量</th><th>進場價</th><th>成本(1張)</th><th>停損</th><th>目標(2R)</th>
         <th>出場日</th><th>出場價</th><th>結果</th>
         <th>損益%</th><th>損益金額</th><th>R值</th><th>持有</th>
       </tr></thead>

@@ -338,9 +338,16 @@ function calcConditions({ close, high, low, volume }) {
   const brk = !!(pivot&&avgVol&&c>pivot&&v>avgVol*1.2&&c<=pivot*1.05);
   const score=[stage2,tt,vcp,brk].filter(Boolean).length;
   // 方案 A：停損 = 突破點 × 97%（跌破突破點即出場）
-  const sl       = pivot ? pivot * 0.97 : wMin(low,20,last);
+  // v3：停損 = 突破日低點（不低於 pivot×97%）
+  const brkDayLow = low[last];
+  const sl = pivot
+    ? Math.max(brkDayLow ?? pivot*0.97, pivot*0.97)
+    : wMin(low,20,last);
   const riskPct  = sl ? (c - sl) / c * 100 : null;
-  return { price:c, stage2, tt, ttScore, vcp, brk, pivot, score, riskPct, stopLoss:sl };
+  // 量能倍率
+  const volRatio = avgVol ? v / avgVol : null;
+  const volTier  = volRatio >= 1.5 ? 2 : volRatio >= 1.2 ? 1 : 0;
+  return { price:c, stage2, tt, ttScore, vcp, brk, pivot, score, riskPct, stopLoss:sl, volTier };
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -714,14 +721,16 @@ function renderTradeTable(signals, filter) {
     const pnlNTD   = (s.exitPrice - s.entryPrice) * SHARES;
     const pnlNTDStr = (pnlNTD >= 0 ? '+' : '') + fmtMoney(pnlNTD);
 
+    const vols = s.volTier >= 2 ? '⭐⭐' : s.volTier === 1 ? '⭐' : '○';
     return `<tr class="${rowCls}">
       <td>${fmtDate(s.entryTs)}</td>
       <td><a class="code-link" href="${tvUrl(s)}" target="_blank">${s.code}</a></td>
       <td>${s.name}</td>
       <td style="color:var(--muted)">${s.sector}</td>
+      <td class="mono">${vols}</td>
       <td class="mono">NT$${fmtPrice(s.entryPrice)}</td>
       <td class="mono" style="color:var(--muted)">${fmtMoney(costNTD)}</td>
-      <td class="mono col-red">NT$${fmtPrice(s.stopLoss)}</td>
+      <td class="mono col-red">NT$${fmtPrice(s.stopLoss)}<br><small style="color:var(--muted)">突破日低點</small></td>
       <td class="mono col-green">NT$${fmtPrice(s.takeProfit)}</td>
       <td>${s.exitReason !== '持有中' ? fmtDate(s.exitTs) : '—'}</td>
       <td class="mono">${s.exitReason !== '持有中' ? 'NT$'+fmtPrice(s.exitPrice) : '持有中'}</td>
@@ -739,8 +748,9 @@ function renderTradeTable(signals, filter) {
         <thead>
           <tr>
             <th>進場日</th><th>代號</th><th>名稱</th><th>類股</th>
+            <th title="量能倍率">量</th>
             <th>進場價</th><th title="進場價×1000股">成本(1張)</th>
-            <th>停損</th><th>目標(2R)</th>
+            <th title="突破日K棒低點">停損</th><th>目標(2R)</th>
             <th>出場日</th><th>出場價</th><th>結果</th>
             <th>損益%</th><th title="(出場-進場)×1000股">損益金額</th>
             <th>R值</th><th>持有</th>
