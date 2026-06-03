@@ -434,14 +434,18 @@ function backtestStock(stock, data) {
         exitReason = `時間出場 (${MAX_HOLD}日)`;
         break;
       }
-      // 棘輪：更新動態停損（只升不降）
+      // 棘輪：到達 +3R 才開始移動停損（+3R → 鎖 +2R，+4R → 鎖 +3R...）
+      // +1R / +2R 時停損不動，繼續持有，讓漲勢確立後再鎖利
       if (high[j] !== null) {
         const reachedR = Math.floor((high[j] - entryPrice) / risk);
         if (reachedR > maxR) {
           maxR = reachedR;
-          // 停損移到 (reachedR - 1) × R，最低不低於進場價
-          const newStop = entryPrice + Math.max(reachedR - 1, 0) * risk;
-          if (newStop > curStop) curStop = newStop;
+          if (reachedR >= 3) {
+            // 達到 +3R 以上，停損鎖在 (reachedR-1) × R
+            const newStop = entryPrice + (reachedR - 1) * risk;
+            if (newStop > curStop) curStop = newStop;
+          }
+          // +1R / +2R 時不移動停損（讓股票有更多空間發展）
         }
       }
       // 動態停損觸發

@@ -204,13 +204,14 @@ def backtest_stock(stock, data):
                 idx=j-1
                 exit_price=close[idx] if close[idx] else entry
                 exit_ts=ts[idx]; exit_reason=f'時間出場({MAX_HOLD}日)'; break
-            # 棘輪：更新動態停損
+            # 棘輪：+3R 才開始鎖停損（+1R/+2R 不移動，給漲勢空間）
             if high[j] is not None:
                 reached_r=int((high[j]-entry)/risk)
                 if reached_r>max_r:
                     max_r=reached_r
-                    new_stop=entry+max(reached_r-1,0)*risk
-                    if new_stop>cur_stop: cur_stop=new_stop
+                    if reached_r>=3:
+                        new_stop=entry+(reached_r-1)*risk
+                        if new_stop>cur_stop: cur_stop=new_stop
             # 動態停損觸發
             if low[j] is not None and low[j]<=cur_stop:
                 exit_price=cur_stop; exit_ts=ts[j]
