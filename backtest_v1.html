@@ -146,16 +146,16 @@ tr.hold { background: rgba(88,166,255,.04); }
 <div class="nav">
   <a href="index.html">← 舊版掃描器</a><span>|</span>
   <a href="v4.html">v4 掃描器</a><span>|</span>
-  <a href="backtest_v1.html" style="color:var(--muted)">回測 v1（固定2R）</a>
+  <a href="backtest.html" style="color:var(--blue)">回測 v2（移動停損）</a>
 </div>
 
 <header>
-  <h1>一年回測報告 <span style="color:var(--blue);font-size:14px">v2</span></h1>
+  <h1>一年回測報告 <span style="color:var(--muted);font-size:14px">v1</span></h1>
   <p class="subtitle">精選40支熱門股 · Minervini + Weinstein 動能策略 · 每次進場1張（1000股）</p>
   <p class="rules-line">
-    進場：<span>突破 ✓ + score≥3 + 停損≤12%</span>
+    進場：<span>突破 ✓ + score≥3</span>
     停損：<span>突破點 × 97%</span>
-    目標：<span>移動停損棘輪（讓利潤繼續跑）</span>
+    目標：<span>固定 2R 出場</span>
     忽略：<span>滑價 / 手續費</span>
   </p>
   <div class="controls">
@@ -204,9 +204,9 @@ tr.hold { background: rgba(88,166,255,.04); }
 <details class="info-box" style="margin-top:16px">
   <summary>▸ 回測規則說明（點開）</summary>
   <div class="info-grid">
-    <div><strong>進場條件（v4）</strong>突破必須觸發（量≥1.2x）+ score≥3 + <b>停損風險≤12%</b>，以當日收盤價進場。停損超過12%代表型態太鬆，跳過。</div>
+    <div><strong>進場條件（v1）</strong>突破必須觸發（量≥1.2x）+ score≥3，以當日收盤價進場。</div>
     <div><strong>停損</strong>進場當日計算之近20根K棒最低點。之後每日掃：當日最低 ≤ 停損 → 停損出場。</div>
-    <div><strong>移動停損（棘輪式）</strong>不設固定目標，讓獲利繼續跑。價格每上漲 1R → 停損上移至前一個 R（+1R時保本、+2R時鎖住+1R…），觸碰動態停損或時間停損才出場。</div>
+    <div><strong>目標（2R）</strong>進場價 + 2×（進場 - 停損）。當日最高 ≥ 目標 → 達標出場。</div>
     <div><strong>時間出場 (15日)</strong>進場後15個交易日內未碰停損也未達標 → 第15日收盤強制出場。「持有中」只代表訊號發生在最近15天內、時間還沒到。</div>
     <div><strong>R值</strong>損益 ÷ 單筆風險。+2R = 賺了2倍風險、-1R = 虧了1個風險單位。</div>
     <div><strong>注意</strong>回測不含滑價、手續費（約0.3%/來回），實際損益會略低。同一支股票可能多次進場。</div>
@@ -404,29 +404,23 @@ function backtestStock(stock, data) {
     };
 
     const cond = calcConditions(slice);
-    // v4 條件：突破必須 + score>=3 + 停損風險 ≤ 12%
+    // v1 條件：突破必須 + score>=3
     if (!cond || !cond.brk || cond.score < 3) continue;
-    if (cond.riskPct && cond.riskPct > 12) continue;  // 停損太寬，跳過
 
     const entryPrice = close[i];
     const stopLoss   = cond.stopLoss;
     if (!stopLoss || stopLoss >= entryPrice) continue;
 
-    const risk = entryPrice - stopLoss;
+    const risk       = entryPrice - stopLoss;
+    const takeProfit = entryPrice + 2 * risk;
 
-    // 移動停損（棘輪式）：讓獲利繼續跑，不設固定 2R 目標
-    // +1R → 停損移到進場價（保本）
-    // +2R → 停損移到 +1R
-    // +3R → 停損移到 +2R …以此類推
+    // v1：固定 2R 目標 或 15日時間停損
     const MAX_HOLD = 15;
     let exitPrice  = close[n - 1] ?? entryPrice;
     let exitTs     = timestamps[n - 1];
     let exitReason = '持有中';
-    let curStop    = stopLoss;   // 動態停損
-    let maxR       = 0;         // 最高到達幾 R
 
     for (let j = i + 1; j < n; j++) {
-      // 時間停損
       if (j - i > MAX_HOLD) {
         const idx = j - 1;
         exitPrice = close[idx] ?? entryPrice;
@@ -434,21 +428,16 @@ function backtestStock(stock, data) {
         exitReason = `時間出場 (${MAX_HOLD}日)`;
         break;
       }
-      // 棘輪：更新動態停損（只升不降）
-      if (high[j] !== null) {
-        const reachedR = Math.floor((high[j] - entryPrice) / risk);
-        if (reachedR > maxR) {
-          maxR = reachedR;
-          // 停損移到 (reachedR - 1) × R，最低不低於進場價
-          const newStop = entryPrice + Math.max(reachedR - 1, 0) * risk;
-          if (newStop > curStop) curStop = newStop;
-        }
-      }
-      // 動態停損觸發
-      if (low[j] !== null && low[j] <= curStop) {
-        exitPrice  = curStop;
+      if (low[j] !== null && low[j] <= stopLoss) {
+        exitPrice  = stopLoss;
         exitTs     = timestamps[j];
-        exitReason = curStop > stopLoss ? `移動停損 (+${Math.max(maxR-1,0)}R鎖定)` : '停損出場';
+        exitReason = '停損出場';
+        break;
+      }
+      if (high[j] !== null && high[j] >= takeProfit) {
+        exitPrice  = takeProfit;
+        exitTs     = timestamps[j];
+        exitReason = '達標 (2R)';
         break;
       }
     }
@@ -462,7 +451,7 @@ function backtestStock(stock, data) {
       code: stock.code, name: stock.name,
       sector: stock.sector, ex: stock.ex,
       entryTs: timestamps[i], exitTs,
-      entryPrice, stopLoss: curStop, takeProfit: null, exitPrice,
+      entryPrice, stopLoss, takeProfit, exitPrice,
       exitReason, pnlPct, rMult, daysHeld,
     });
   }
@@ -570,7 +559,7 @@ function fmtMoney(n) {
 
 function renderSummary(signals) {
   const completed = signals.filter(s => s.exitReason !== '持有中');
-  const wins2R    = signals.filter(s => s.exitReason.startsWith('移動停損'));  // 移動停損出場（獲利）
+  const wins2R    = signals.filter(s => s.exitReason === '達標 (2R)');
   const losses    = signals.filter(s => s.exitReason === '停損出場');
   const timeExit  = signals.filter(s => s.exitReason.startsWith('時間出場'));
   const holding   = signals.filter(s => s.exitReason === '持有中');
@@ -608,7 +597,7 @@ function renderSummary(signals) {
     <div class="sum-card">
       <div class="sum-label">觸發訊號</div>
       <div class="sum-value col-blue">${signals.length} 筆</div>
-      <div class="sum-sub">移動停損出場 ${wins2R.length} · 停損 ${losses.length} · 時間出場 ${timeExit.length} · 持有中 ${holding.length}</div>
+      <div class="sum-sub">達標2R ${wins2R.length} · 停損 ${losses.length} · 時間出場 ${timeExit.length} · 持有中 ${holding.length}</div>
     </div>
     <div class="sum-card">
       <div class="sum-label">勝率</div>
@@ -662,7 +651,7 @@ function renderSectorGrid(signals) {
   const map = {};
   for (const s of signals) {
     if (!map[s.sector]) map[s.sector] = { wins:0, losses:0, hold:0 };
-    if (s.exitReason.startsWith('移動停損'))  map[s.sector].wins++;
+    if (s.exitReason === '達標 (2R)')  map[s.sector].wins++;
     else if (s.exitReason === '停損出場') map[s.sector].losses++;
     else map[s.sector].hold++;
   }
@@ -713,7 +702,7 @@ function renderTradeTable(signals, filter) {
   }
 
   const rows = signals.map(s => {
-    const isWin  = s.exitReason.startsWith('移動停損');
+    const isWin  = s.exitReason === '達標 (2R)';
     const isLoss = s.exitReason === '停損出場';
     const isTime = s.exitReason.startsWith('時間出場');
     const rowCls = isWin ? 'win' : isLoss ? 'loss' : 'hold';
@@ -737,6 +726,7 @@ function renderTradeTable(signals, filter) {
       <td class="mono">NT$${fmtPrice(s.entryPrice)}</td>
       <td class="mono" style="color:var(--muted)">${fmtMoney(costNTD)}</td>
       <td class="mono col-red">NT$${fmtPrice(s.stopLoss)}<br><small style="color:var(--muted)">突破點×97%</small></td>
+      <td class="mono col-green">NT$${fmtPrice(s.takeProfit)}</td>
       <td>${s.exitReason !== '持有中' ? fmtDate(s.exitTs) : '—'}</td>
       <td class="mono">${s.exitReason !== '持有中' ? 'NT$'+fmtPrice(s.exitPrice) : '持有中'}</td>
       <td><span class="tag ${tagCls}">${s.exitReason}</span></td>
@@ -755,7 +745,7 @@ function renderTradeTable(signals, filter) {
             <th>進場日</th><th>代號</th><th>名稱</th><th>類股</th>
             <th title="量能倍率">量</th>
             <th>進場價</th><th title="進場價×1000股">成本(1張)</th>
-            <th title="棘輪移動停損（+1R保本/+2R鎖1R/...）">停損</th>
+            <th title="突破點×97%">停損</th><th>目標(2R)</th>
             <th>出場日</th><th>出場價</th><th>結果</th>
             <th>損益%</th><th title="(出場-進場)×1000股">損益金額</th>
             <th>R值</th><th>持有</th>
