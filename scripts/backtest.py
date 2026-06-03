@@ -134,14 +134,8 @@ def calc_conditions(close, high, low, volume):
     vol_ratio = v/avg_vol if avg_vol else None
     brk=bool(pivot and avg_vol and c>pivot and vol_ratio and vol_ratio>=1.2 and c<=pivot*1.05)
 
-    # v3：停損 = 突破日低點（不低於 pivot×97%）
-    brk_day_low = low[last]
-    if pivot and brk_day_low is not None:
-        sl = max(brk_day_low, pivot*0.97)
-    elif pivot:
-        sl = pivot*0.97
-    else:
-        sl = None
+    # 回測停損：突破點 × 97%（固定，避免回測因單日波動失真）
+    sl = pivot * 0.97 if pivot else None
 
     risk_pct=(c-sl)/c*100 if sl and sl<c else None
     vol_tier = 2 if (vol_ratio and vol_ratio>=1.5) else (1 if (vol_ratio and vol_ratio>=1.2) else 0)
@@ -439,7 +433,7 @@ function renderTradeTable(sigs){
       <td>${vols}</td>
       <td class="mono">NT$${fmtPrice(s.entry)}</td>
       <td class="mono" style="color:var(--muted)">${fmtMoney(cost)}</td>
-      <td class="mono col-red">NT$${fmtPrice(s.stop)}<br><small style="color:var(--muted)">突破日低點</small></td>
+      <td class="mono col-red">NT$${fmtPrice(s.stop)}<br><small style="color:var(--muted)">突破點×97%</small></td>
       <td class="mono col-green">NT$${fmtPrice(s.target)}</td>
       <td>${s.reason!=='持有中'?fmtDate(s.exit_ts):'—'}</td>
       <td class="mono">${s.reason!=='持有中'?'NT$'+fmtPrice(s.exit):'持有中'}</td>
