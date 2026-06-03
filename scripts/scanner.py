@@ -422,7 +422,7 @@ def main():
             if cond['has_breakout'] and cond['score'] >= 3 and (cond['rs'] is None or cond['rs'] >= 0):
                 entries.append(entry)
             # 觀察名單：TT 6+/7 + score>=2 + 尚未突破
-            elif not cond['has_breakout'] and cond['score'] >= 2 and cond['tt_score'] >= 6:
+            elif not cond['has_breakout'] and cond['score'] >= 2 and cond['tt']:
                 watches.append(entry)
 
     # 排序：今日突破在前，RS 高的優先
