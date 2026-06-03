@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>台股動能掃描器 v3 | Minervini + Weinstein</title>
+<title>台股動能掃描器 v4 | Minervini + Weinstein</title>
 <style>
 :root {
   --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--border:#30363d;
@@ -147,13 +147,13 @@ tr.s4{background:rgba(63,185,80,.06);}tr.s3{background:rgba(210,153,34,.05);}
 <div class="nav">
   <a href="index.html">← 舊版</a><span>|</span>
   <a href="v2.html">v2</a><span>|</span>
-  <a href="v4.html" style="color:var(--green)">🆕 v4 精選版</a><span>|</span>
+  <a href="v3.html">v3</a><span>|</span>
   <a href="backtest.html">回測</a>
 </div>
 
 <header>
-  <h1>台股動能掃描器 <span style="color:var(--blue);font-size:14px">v3</span></h1>
-  <p class="subtitle">大盤過濾 · 相對強弱 · 量能分級 · 類股偏好 · Minervini + Weinstein</p>
+  <h1>台股動能掃描器 <span style="color:var(--blue);font-size:14px">v4</span></h1>
+  <p class="subtitle">RS ≥ 5% · 停損 ≤ 12% · 加權評分 · 精選前20支 · Minervini + Weinstein</p>
   <div class="controls">
     <button id="scanBtn" onclick="startScan()">▶ 開始掃描</button>
     <div class="capital-wrap">
@@ -199,14 +199,14 @@ tr.s4{background:rgba(63,185,80,.06);}tr.s3{background:rgba(210,153,34,.05);}
 </div>
 
 <details class="info-box">
-  <summary>▸ v3 新增功能說明（點開）</summary>
+  <summary>▸ v4 篩選邏輯說明（點開）</summary>
   <div class="info-grid">
-    <div><strong>大盤過濾（Weinstein）</strong>先判斷台灣加權指數是否在 Stage 2（收盤>30週均線且均線向上）。大盤 Stage 4 時所有突破成功率大幅下降，建議觀望或減碼。</div>
-    <div><strong>相對強弱（Minervini RS）</strong>計算個股過去 3 個月漲幅 vs 大盤漲幅。只顯示「跑贏大盤」的股票（RS > 0）。跑輸大盤的股票即使型態好也不優先考慮。</div>
-    <div><strong>量能分級</strong>突破時成交量倍率：⭐⭐ ≥ 1.5x（強力突破，機構積極介入）/ ⭐ 1.2–1.5x（普通突破，需觀察持續性）。</div>
-    <div><strong>TT 7 條件明細</strong>每張進場卡片底部顯示 Minervini Trend Template 哪幾條通過、哪幾條未過，讓你知道強度。</div>
-    <div><strong>擴大觀察名單</strong>v2 只看 TT 7/7，v3 的觀察名單包含 TT 6+/7（差一條的也納入），讓你不錯過潛力股。</div>
-    <div><strong>偏好類股標示</strong>半導體、IC設計、AI伺服器、光電、生技等成長型類股加 🔥 標示優先關注，傳產金融類股不特別突出。</div>
+    <div><strong>v4 篩選條件（比 v3 更嚴格）</strong>突破必須 + score≥3 + <b>RS ≥ 5%</b>（跑贏大盤 5% 以上）+ <b>停損風險 ≤ 12%</b>。四個條件全部滿足才進今日進場清單。</div>
+    <div><strong>加權評分 0–10</strong>Stage2/TT/VCP/突破各+1；量能 ⭐⭐+2/⭐+1；RS≥15%+2/≥10%+1.5/≥5%+1；今日突破+1；停損≤6%+1。依分數排序，顯示前 20 支最強標的。</div>
+    <div><strong>RS ≥ 5% 的意義</strong>v3 只要求 RS≥0（略為跑贏），v4 要求真正的相對強勢股。Minervini 要求前 10–25%，5% 是合理的最低門檻。</div>
+    <div><strong>停損 ≤ 12% 的意義</strong>停損超過 12% 代表整理型態太鬆，以 1% 規則計算的部位會太小（<8萬，意義不大）。12% 以內才是合格的 VCP 收縮型態。</div>
+    <div><strong>大盤過濾 + 量能分級</strong>繼承 v3 所有功能：TWII Stage 判斷、RS vs 大盤、⭐⭐/⭐ 量能分級、突破日低點停損、TT 7 條件明細。</div>
+    <div><strong>0支進場是正確的</strong>大盤不好、RS 不夠強、停損太寬時，會顯示 0 支。這不是問題，而是告訴你今天不宜進場，等待品質更高的機會。</div>
   </div>
 </details>
 
@@ -364,6 +364,39 @@ function calcConditions({close,high,low,volume}, twiiClose) {
           pivot,score,riskPct,stopLoss:sl,rs,volRatio:volRatio??0,volTier:brkVolTier,breakoutDays};
 }
 
+/* ══ v4 加權評分（0–10）══════════════════════════════ */
+const TOP_N = 20;  // 精選前幾支
+
+function calcWeightedScore(r) {
+  if (!r || r.error) return 0;
+  let s = 0;
+  // 基本條件各 +1（最多 4）
+  if (r.stage2)      s += 1;
+  if (r.tt)          s += 1;
+  if (r.vcp)         s += 1;
+  if (r.hasBreakout) s += 1;
+  // 量能加分（最多 2）
+  if (r.volTier >= 2) s += 2;
+  else if (r.volTier === 1) s += 1;
+  // RS 加分（最多 2）
+  if (r.rs != null) {
+    if (r.rs >= 15) s += 2;
+    else if (r.rs >= 10) s += 1.5;
+    else if (r.rs >= 5)  s += 1;
+  }
+  // 今日突破 +1
+  if (r.breakoutDays === 0) s += 1;
+  // 停損很緊（≤6%）+1
+  if (r.riskPct != null && r.riskPct <= 6) s += 1;
+  return Math.min(10, Math.round(s * 10) / 10);
+}
+
+function scoreColor(s) {
+  if (s >= 8) return 'var(--green)';
+  if (s >= 6) return 'var(--yellow)';
+  return 'var(--muted)';
+}
+
 /* ══ 大盤狀態（TWII）══════════════════════════════════ */
 function calcMarketStatus(twiiClose) {
   if(!twiiClose||twiiClose.length<200)return{stage:0,label:'大盤資料不足',cls:'stage-3'};
@@ -449,15 +482,23 @@ function renderMarketBar(status) {
 
 /* ══ 渲染：今日進場（卡片）════════════════════════════ */
 function renderEntry(results, marketStage) {
-  // A方案：今日突破 或 近期突破（1-5天）+ score>=3 + RS>=0
-  const entries=results.filter(r=>!r.error&&r.hasBreakout&&r.score>=3&&(r.rs==null||r.rs>=0));
-  entries.sort((a,b)=>a.breakoutDays-b.breakoutDays||((b.score??0)-(a.score??0)));
+  // v4：RS ≥ 5% + 停損風險 ≤ 12% + 加權評分排序 + 只顯示前 TOP_N 支
+  const allQualified = results.filter(r =>
+    !r.error && r.hasBreakout && r.score >= 3
+    && (r.rs == null || r.rs >= 5)          // RS ≥ 5%（跑贏大盤 5%+）
+    && (r.riskPct == null || r.riskPct <= 12) // 停損風險 ≤ 12%
+  );
+  // 計算加權評分並排序
+  allQualified.forEach(r => { r._ws = calcWeightedScore(r); });
+  allQualified.sort((a,b) => b._ws - a._ws);
+  const entries    = allQualified.slice(0, TOP_N);
+  const extraCount = allQualified.length - entries.length;
   const cnt=document.getElementById('cnt-entry');
   cnt.textContent=entries.length;
   cnt.className='tab-count'+(entries.length?' has-data':'');
 
   if(!entries.length){
-    document.getElementById('tab-entry').innerHTML=`<div class="empty"><div class="icon">💤</div><div>今日無符合條件的進場訊號${marketStage===4?' （大盤空頭期間）':''}</div></div>`;
+    document.getElementById('tab-entry').innerHTML=`<div class="empty"><div class="icon">💤</div><div>今日無符合 v4 條件的進場訊號${marketStage===4?' （大盤空頭期間）':''}<br><small style="color:var(--muted)">篩選：突破＋score≥3＋RS≥5%＋停損≤12%</small></div></div>`;
     return;
   }
 
@@ -488,6 +529,7 @@ function renderEntry(results, marketStage) {
     <span class="vol-stars" title="量能等級">${volStars(r.volTier)}</span>
     ${rsStr?`<span class="rs-badge ${rsCls}" title="RS vs 大盤">RS ${rsStr}</span>`:''}
     <span class="badge-brk">${r.breakoutDays===0?'今日突破 🔥':`突破 ${r.breakoutDays}天前`}</span>
+    <span style="font-size:12px;font-weight:700;color:${scoreColor(r._ws||0)}">◆ ${(r._ws||0).toFixed(1)}</span>
   </div>
   <div class="card-stats">
     <div class="stat-box">
@@ -522,7 +564,10 @@ function renderEntry(results, marketStage) {
 </div>`;
   }).join('');
 
-  document.getElementById('tab-entry').innerHTML=`<div class="cards-grid">${cards}</div>`;
+  const extraNote = extraCount > 0
+    ? `<div style="text-align:center;padding:12px;color:var(--muted);font-size:12px">另有 ${extraCount} 支符合條件但評分較低，詳見完整清單</div>`
+    : '';
+  document.getElementById('tab-entry').innerHTML=`<div class="cards-grid">${cards}</div>${extraNote}`;
 }
 
 /* ══ 渲染：觀察名單（v3：TT 6+，擴大範圍）══════════ */
@@ -675,7 +720,7 @@ async function startScan(){
   document.getElementById('progressWrap').style.display='none';
 
   const valid=allResults.filter(r=>!r.error);
-  const entries=valid.filter(r=>r.hasBreakout&&r.score>=3&&(r.rs==null||r.rs>=0)).length;
+  const entries=valid.filter(r=>r.hasBreakout&&r.score>=3&&(r.rs==null||r.rs>=5)&&(r.riskPct==null||r.riskPct<=12)).length;
   const watches=valid.filter(r=>!r.hasBreakout&&r.score>=2&&r.tt).length;
 
   const staleCount=valid.filter(r=>r.isStale).length;

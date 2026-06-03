@@ -150,11 +150,11 @@ tr.hold { background: rgba(88,166,255,.04); }
 </div>
 
 <header>
-  <h1>一年回測報告</h1>
+  <h1>一年回測報告 <span style="color:var(--blue);font-size:14px">v2</span></h1>
   <p class="subtitle">精選40支熱門股 · Minervini + Weinstein 動能策略 · 每次進場1張（1000股）</p>
   <p class="rules-line">
-    進場：<span>量能突破 ✓（量 ≥ 1.2x 均量）+ score ≥ 3</span>
-    停損：<span>近20根K棒最低點</span>
+    進場：<span>突破 ✓ + score≥3 + 停損≤12%</span>
+    停損：<span>突破日低點</span>
     目標：<span>進場價 + 2倍風險（2R）</span>
     忽略：<span>滑價 / 手續費</span>
   </p>
@@ -204,7 +204,7 @@ tr.hold { background: rgba(88,166,255,.04); }
 <details class="info-box" style="margin-top:16px">
   <summary>▸ 回測規則說明（點開）</summary>
   <div class="info-grid">
-    <div><strong>進場條件（A方案）</strong>過去30天內，量能突破必須觸發，且 Stage2 / TT / VCP 三項中至少兩項成立（score ≥ 3），以當日收盤價進場。</div>
+    <div><strong>進場條件（v4）</strong>突破必須觸發（量≥1.2x）+ score≥3 + <b>停損風險≤12%</b>，以當日收盤價進場。停損超過12%代表型態太鬆，跳過。</div>
     <div><strong>停損</strong>進場當日計算之近20根K棒最低點。之後每日掃：當日最低 ≤ 停損 → 停損出場。</div>
     <div><strong>目標（2R）</strong>進場價 + 2×（進場 - 停損）。當日最高 ≥ 目標 → 達標出場。勝率若 > 33% 則期望值為正。</div>
     <div><strong>時間出場 (15日)</strong>進場後15個交易日內未碰停損也未達標 → 第15日收盤強制出場。「持有中」只代表訊號發生在最近15天內、時間還沒到。</div>
@@ -408,8 +408,9 @@ function backtestStock(stock, data) {
     };
 
     const cond = calcConditions(slice);
-    // 方向 A：突破必須 + 至少 score >= 3（Stage2/TT/VCP 至少兩個）
+    // v4 條件：突破必須 + score>=3 + 停損風險 ≤ 12%
     if (!cond || !cond.brk || cond.score < 3) continue;
+    if (cond.riskPct && cond.riskPct > 12) continue;  // 停損太寬，跳過
 
     const entryPrice = close[i];
     const stopLoss   = cond.stopLoss;
